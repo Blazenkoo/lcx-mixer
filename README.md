@@ -1,6 +1,6 @@
-<h1 align="center">Launch Control XL (Mk2) Mixer</h1>
+<h1 align="center">LCX Mixer</h1>
 
-<p align="center"><strong>A hardware mixer for everything playing on your Mac.</strong></p>
+<p align="center"><strong>Map everything playing to your Novation Launch Control XL (MK2).</strong></p>
 
 <p align="center">
   <img src="docs/images/hero.png" width="880" alt="The LCX Mixer window: YouTube, Twitch, GarageBand and Spotify on channels 1–4, four free channels, and App Store in the Unassigned Audio Sources list">
