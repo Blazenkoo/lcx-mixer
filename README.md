@@ -2,6 +2,16 @@
 
 **A hardware mixer for everything playing on your Mac.** LCX Mixer turns a Novation Launch Control XL mk2 into an 8-channel mixer for whatever is making sound: individual Chrome tabs (Spotify, YouTube, Twitch…) and native apps (games, Discord, Music…). Each new source lands on the next free fader automatically.
 
+![The LCX Mixer window: YouTube, Twitch, GarageBand and Spotify on channels 1–4, four free channels, and App Store in the Unassigned Audio Sources list](docs/images/mixer-window.png)
+
+<!-- Demo video: drag lcx-mixer-demo.mp4 onto this line in GitHub's web editor. -->
+
+<p>
+  <img src="docs/images/menu-bar-panel.png" width="414" alt="The menu-bar panel listing the same four channels as rows, with volume percentages and an Assign button for App Store">
+  &nbsp;
+  <img src="docs/images/pop-up.png" width="484" alt="The on-screen pop-up: Spotify – Bleed It Out • Linkin Park, on channel 4">
+</p>
+
 ## Why it exists
 
 macOS has no per-app volume mixer, and browsers play every tab through one shared audio stream. In practice that means balancing a game, a voice chat and music by hunting through tabs and in-app sliders, often mid-game.

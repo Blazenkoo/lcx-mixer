@@ -41,6 +41,8 @@ A small macOS menu-bar app, paired with a Chrome extension, turns the Launch Con
 
 ## Architecture
 
+![The LCX Mixer window with four sources on channels 1–4](images/mixer-window.png)
+
 The Mac app is the hub: it owns the controller, the native-app audio and all state. The Chrome extension is its hands inside Chrome.
 
 ```mermaid
@@ -245,7 +247,7 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 | Situation | Behaviour |
 | --- | --- |
 | Controller unplugged, then plugged back in | Window and panel show "Not connected"; the menu-bar icon gets its slash. On reconnect, LEDs are refreshed and all faders start detached |
-| Mixer app quits or crashes | Every tapped app's audio returns to normal at its original volume. Nothing stays muted |
+| Mixer app quits or crashes | Media keeps playing without a jump. Native apps go back to their own volume, so none stays muted; Chrome tabs keep the volume and mute state they had (verified in testing) |
 | Chrome not running, or extension missing | Tabs simply don't appear. If Chrome runs but the extension doesn't connect, the header says so with a fix-it link |
 | Volume changed with a site's or app's own slider | The channel follows the new level and the fader detaches |
 | Tab muted from Chrome's tab strip | The channel shows muted, and the LED follows |
@@ -281,8 +283,8 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [x] Tabs keep their channels when moved to another window or screen; pop-ups appear on the screen where the source plays
 - [x] Rebuilds keep the audio permission, and the extension updates itself
 - [ ] Unplugging and replugging the controller recovers cleanly
-- [ ] Quitting the mixer app restores all audio
-- [ ] Audio delay feels fine in a real League match
+- [x] Quitting the mixer app leaves all audio playing, with no volume jump
+- [x] Audio delay is imperceptible in a real League match
 
 ## Security
 
