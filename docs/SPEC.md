@@ -100,6 +100,7 @@ A source is either one native app (or app group) or one Chrome tab. A new source
 4. **All channels full:** the new source goes to the unassigned list (see next section) and waits.
 5. **A channel frees:** the source that has waited longest in the unassigned list takes it. Sources you unassigned yourself don't count as waiting.
 6. **No reshuffling:** channels are never reordered or compacted automatically. Drag-and-drop is the only way to move a source to a different channel.
+7. **After a restart:** sources that are still open when the app starts again go back to the channels they had, including a paused tab that held one. Each of those channels is held for 10 seconds; a source that hasn't come back by then gives its channel to whatever is waiting. New sources take other free channels in the meantime, and your own Assign and drag can use any free channel.
 
 ## Unassigned sources and the ignore list
 
@@ -238,7 +239,9 @@ The controller LEDs, the window and the menu-bar panel use the same four colours
 
 **Remembered volume:** the app saves one volume per website (youtube.com) and per app (League), not per tab. It updates whenever you change a source's volume and applies when a new source from that website or app gets a channel. It's stored on this Mac only: a website or app name and a volume, with no tab list, page addresses or history.
 
-**Not remembered across restarts, by design:** which source sat on which channel, and manual unassigns. Channels fill fresh, first come, first served, every time the app starts.
+**Channel layout:** which source sits on which channel is saved whenever it changes, so it survives a quit or a crash (see assignment rule 7). Only the tab's number and website, or the app's name, are stored. If Chrome was restarted in between, its tabs have new numbers, so they fill channels fresh.
+
+**Not remembered across restarts, by design:** manual unassigns. A source you unassigned is treated as new after a restart.
 
 ## Edge cases and failure handling
 
@@ -247,6 +250,7 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 | Situation | Behaviour |
 | --- | --- |
 | Controller unplugged, then plugged back in | Window and panel show "Not connected"; the menu-bar icon gets its slash. On reconnect, LEDs are refreshed and all faders start detached |
+| Mixer app restarts while media keeps playing | Each source that is still open goes back to its old channel; the fader needs one touch to pick it up again, as the faders aren't motorised |
 | Mixer app quits or crashes | Media keeps playing without a jump. Native apps go back to their own volume, so none stays muted; Chrome tabs keep the volume and mute state they had (verified in testing) |
 | Chrome not running, or extension missing | Tabs simply don't appear. If Chrome runs but the extension doesn't connect, the header says so with a fix-it link |
 | Volume changed with a site's or app's own slider | The channel follows the new level and the fader detaches |
@@ -283,6 +287,7 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [x] Tabs keep their channels when moved to another window or screen; pop-ups appear on the screen where the source plays
 - [x] Rebuilds keep the audio permission, and the extension updates itself
 - [x] Unplugging and replugging the controller recovers cleanly
+- [x] Restarting the app puts sources back on their channels; a closed source's channel frees after 10 seconds
 - [x] Quitting the mixer app leaves all audio playing, with no volume jump
 - [x] Audio delay is imperceptible in a real League match
 

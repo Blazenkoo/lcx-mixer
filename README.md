@@ -18,7 +18,7 @@ https://github.com/user-attachments/assets/81d2e758-2983-4775-951c-c71e33042e1c
 
 **What you get**
 
-- **Automatic assignment:** a new source takes the next free channel, first come, first served, and keeps it until it closes.
+- **Automatic assignment:** a new source takes the next free channel, first come, first served, and keeps it until it closes, even if you restart the app.
 - **Per-tab control:** Spotify, YouTube and Twitch in the same browser each get their own fader.
 - **Hands-free control:** volume on the faders, play/pause and mute on the buttons, and mute-all on the side Mute button.
 - **Clear feedback:** controller LEDs, a mixer window, a menu-bar panel and a short on-screen pop-up all show the same state.

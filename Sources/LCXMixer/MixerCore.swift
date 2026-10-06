@@ -16,10 +16,13 @@ final class MixerCore: ObservableObject {
     @Published private(set) var channels: [String?] = Array(repeating: nil, count: MixerCore.channelCount) {
         didSet {
             for i in 0..<MixerCore.channelCount where oldValue[i] != channels[i] { resetKnobs(i) }
+            // A channel that gets any source is no longer held for the one that sat there before the restart.
+            if !restore.isEmpty { restore = restore.filter { channels[$0.key] == nil } }
             scheduleRefresh()
+            saveLayout()
         }
     }
-    @Published private(set) var sources: [String: Source] = [:] { didSet { scheduleRefresh() } }
+    @Published private(set) var sources: [String: Source] = [:] { didSet { scheduleRefresh(); saveLayout() } }
     @Published private(set) var waiting: [String] = []
     @Published private(set) var manual: [String] = []
     @Published private(set) var muteAll = false { didSet { scheduleRefresh() } }
@@ -70,6 +73,15 @@ final class MixerCore: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var pollCount = 0
 
+    // Restoring the channel layout after a restart
+    private struct SavedSlot: Codable, Equatable { var id: String; var host: String }
+    private static let layoutKey = "channelLayout"
+    /// How long a channel is held for the source that sat on it before the restart.
+    private static let restoreWindow: TimeInterval = 10
+    /// Channels held for sources from the saved layout, until they return or the window ends.
+    private var restore: [Int: SavedSlot] = [:]
+    private var lastSavedLayout: Data?
+
     init(settings: AppSettings) {
         self.settings = settings
         self.monitor = AudioProcessMonitor(settings: settings)
@@ -79,7 +91,7 @@ final class MixerCore: ObservableObject {
 
     var masterActive: Bool { settings.masterMode && masterSupported }
     var firstSourceChannel: Int { masterActive ? 1 : 0 }
-    var hasFreeChannel: Bool { firstFreeChannel() != nil }
+    var hasFreeChannel: Bool { firstFreeChannel(includingHeld: true) != nil }
 
     var unassigned: [Source] {
         (waiting + manual).compactMap { sources[$0] }
@@ -133,6 +145,7 @@ final class MixerCore: ObservableObject {
     // MARK: - Start
 
     func start() {
+        loadLayout()
         ChromeBridgeServer.registerWithChrome()
 
         midi.onEvent = { [weak self] event in MainActor.assumeIsolated { self?.handle(event) } }
@@ -213,7 +226,7 @@ final class MixerCore: ObservableObject {
                 if engine.hasTap(id) {
                     engine.ensureTap(id: id, processObjects: app.processObjects, gain: effectiveGain(s))
                 }
-            } else if app.isRunningOutput {
+            } else if app.isRunningOutput || isHeld(id, host: "") {
                 var s = Source(
                     id: id, kind: .app, name: app.name, detail: detail, icon: app.icon,
                     rememberKey: key, isPlaying: true, isAudible: true, isMuted: false, volume: 1,
@@ -249,8 +262,9 @@ final class MixerCore: ObservableObject {
 
     // MARK: - Assignment
 
-    private func firstFreeChannel() -> Int? {
-        (firstSourceChannel..<MixerCore.channelCount).first { channels[$0] == nil }
+    /// Automatic placement skips channels held for a returning source; your own actions (Assign, drag) may use them.
+    private func firstFreeChannel(includingHeld: Bool = false) -> Int? {
+        (firstSourceChannel..<MixerCore.channelCount).first { channels[$0] == nil && (includingHeld || restore[$0] == nil) }
     }
 
     private func addSource(_ source: Source) {
@@ -262,7 +276,9 @@ final class MixerCore: ObservableObject {
             return
         }
         sources[s.id] = s
-        if let ch = firstFreeChannel() {
+        if let ch = heldChannel(for: s) {
+            place(s.id, on: ch)
+        } else if let ch = firstFreeChannel() {
             place(s.id, on: ch)
         } else {
             waiting.append(s.id)
@@ -366,8 +382,58 @@ final class MixerCore: ObservableObject {
     }
 
     private func fillFromWaiting(_ ch: Int) {
-        guard ch >= firstSourceChannel, channels[ch] == nil, let next = waiting.first else { return }
+        guard ch >= firstSourceChannel, channels[ch] == nil, restore[ch] == nil, let next = waiting.first else { return }
         place(next, on: ch)
+    }
+
+    // MARK: - Channel layout across restarts
+
+    /// Loads the layout saved before the app last quit, and holds those channels for a short while.
+    private func loadLayout() {
+        guard let data = UserDefaults.standard.data(forKey: Self.layoutKey),
+              let slots = try? JSONDecoder().decode([SavedSlot?].self, from: data) else { return }
+        lastSavedLayout = data
+        for (ch, slot) in slots.enumerated() where ch < Self.channelCount {
+            if let slot { restore[ch] = slot }
+        }
+        if !restore.isEmpty {
+            after(Self.restoreWindow) { [weak self] in self?.endRestore() }
+        }
+    }
+
+    /// Saves which source sits on which channel: only the source's ID (tab number or app) and, for tabs, the website.
+    private func saveLayout() {
+        var slots: [SavedSlot?] = Array(repeating: nil, count: Self.channelCount)
+        for ch in 0..<Self.channelCount {
+            if let id = channels[ch], let s = sources[id] {
+                slots[ch] = SavedSlot(id: id, host: s.kind == .tab ? s.host : "")
+            } else if let held = restore[ch] {
+                slots[ch] = held // keep it saved while it's still being held
+            }
+        }
+        guard let data = try? JSONEncoder().encode(slots), data != lastSavedLayout else { return }
+        lastSavedLayout = data
+        UserDefaults.standard.set(data, forKey: Self.layoutKey)
+    }
+
+    /// A tab must also be on the same website, so a reused tab number can't take another site's channel.
+    private func isHeld(_ id: String, host: String) -> Bool {
+        restore.values.contains { $0.id == id && (id.hasPrefix("app:") || $0.host == host) }
+    }
+
+    private func heldChannel(for s: Source) -> Int? {
+        restore.first { entry in
+            entry.value.id == s.id && (s.kind == .app || entry.value.host == s.host)
+                && entry.key >= firstSourceChannel && channels[entry.key] == nil
+        }?.key
+    }
+
+    /// Sources that didn't come back in time give up their channels; waiting sources fill them.
+    private func endRestore() {
+        guard !restore.isEmpty else { return }
+        restore.removeAll()
+        for ch in firstSourceChannel..<Self.channelCount where channels[ch] == nil { fillFromWaiting(ch) }
+        saveLayout()
     }
 
     // MARK: - User actions (UI and controller)
@@ -389,7 +455,7 @@ final class MixerCore: ObservableObject {
     }
 
     func assign(_ id: String) {
-        guard sources[id] != nil, channel(of: id) == nil, let ch = firstFreeChannel() else { return }
+        guard sources[id] != nil, channel(of: id) == nil, let ch = firstFreeChannel(includingHeld: true) else { return }
         if sources[id]?.permissionNeeded == true {
             AudioCapturePermission.openSystemSettings()
             return
@@ -904,7 +970,8 @@ final class MixerCore: ObservableObject {
             }
 
             if sources[id] == nil {
-                guard audible, !settings.isIgnored([host]) else { continue }
+                // A paused tab that held a channel before the restart takes it back too.
+                guard audible || (hasMedia && isHeld(id, host: host)), !settings.isIgnored([host]) else { continue }
                 seen.insert(id)
                 var s = Source(
                     id: id, kind: .tab, name: SiteNames.name(forHost: host),
