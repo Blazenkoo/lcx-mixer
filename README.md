@@ -83,7 +83,8 @@ LCX Mixer has **no network attack surface**: there is no server or web app, and 
 - Chrome talks to the app only through Chrome's native messaging, which Chrome allows only for this extension's ID.
 - The app and its Chrome bridge connect through a local socket that only your user account can access. Each side checks that the other runs under your account and carries the app's own code signature.
 - Site icons come from Chrome's local icon cache. The app makes no network requests.
-- The only permission requested is System audio recording.
+- The only permission requested is System audio recording. No microphone access.
+- **About the purple dot:** while a native app is on a channel, macOS shows a purple dot in the menu bar, its standard sign that an app is capturing system audio. That's LCX Mixer taking over the app's sound to set its volume. Click the dot or open Control Center to see the app's name. An orange dot would mean a microphone is in use, which LCX Mixer never does.
 
 ## Known limitations
 

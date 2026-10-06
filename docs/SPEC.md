@@ -302,6 +302,7 @@ LCX Mixer has no network attack surface: no server, no web app, nothing listenin
 - **Bridge ↔ app:** a local socket file in a folder only your user account can open (`0700`). The socket file itself is user-only (`0600`).
 - **Both ends verify each other:** a connection is accepted only if the other process runs under the same user account and is signed with the app's own code signature. A fake listener or another program can't send or receive mixer commands.
 - **Permissions:** only System audio recording, used to control the volume of apps on a channel. No microphone or accessibility permissions. The app makes no network requests at all; site icons come from Chrome's local icon cache.
+- **Purple menu-bar dot:** while a native app is on a channel, macOS shows its purple system-audio-recording indicator, naming LCX Mixer in Control Center. It is expected and explained in the README; Chrome tabs never trigger it.
 
 ## Licence and distribution
 
