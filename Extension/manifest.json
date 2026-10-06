@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "LCX Mixer",
+  "version": "1.0.0",
+  "description": "Connects Chrome tabs to the LCX Mixer app and the Launch Control XL.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy0s+HRCdwiWPKC8kuT/aTJXsebxYH80iQS0IYZkQOevnfYAH2iH0NKAPhbcUWfmTTdO6ngj9EiTbZv9FzLMCq1hMIfKf2hCg8lSLkaU1EHgBemwBHXUzG9jayhqvox4yHMZx5gNx9suVIuvrNgSMK7TteOram4c7UIdK9gCVb6N5pKGOOqBhnTjR64lmjGP7sio3th5R6thp26nU5DYo3GLieGIVLBNREzcH9ofHqp5O1W+/k5xfOXwWidCl7A/I5KFw/hEjIXwOFt0gauRrZEunNG8gXN2liX5/LawXnODVKd+916J+xFbtG0p7TnOfgiSP4kiLGtu9HCYDoSekbQIDAQAB",
+  "permissions": ["tabs", "nativeMessaging", "scripting", "favicon"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["main-world.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["isolated.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true
+    }
+  ],
+  "action": { "default_title": "LCX Mixer" }
+}
