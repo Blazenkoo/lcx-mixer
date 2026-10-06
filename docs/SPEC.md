@@ -282,7 +282,7 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [x] Speed and seek knobs, with their LEDs
 - [x] Tabs keep their channels when moved to another window or screen; pop-ups appear on the screen where the source plays
 - [x] Rebuilds keep the audio permission, and the extension updates itself
-- [ ] Unplugging and replugging the controller recovers cleanly
+- [x] Unplugging and replugging the controller recovers cleanly
 - [x] Quitting the mixer app leaves all audio playing, with no volume jump
 - [x] Audio delay is imperceptible in a real League match
 

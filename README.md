@@ -1,23 +1,20 @@
-# LCX Mixer
+<h1 align="center">LCX Mixer</h1>
 
-![The LCX Mixer window: YouTube, Twitch, GarageBand and Spotify on channels 1–4, four free channels, and App Store in the Unassigned Audio Sources list](docs/images/mixer-window.png)
+<p align="center"><strong>A hardware mixer for everything playing on your Mac.</strong></p>
 
-**A hardware mixer for everything playing on your Mac.** LCX Mixer turns a Novation Launch Control XL mk2 into an 8-channel mixer for whatever is making sound: individual Chrome tabs (Spotify, YouTube, Twitch…) and native apps (games, Discord, Music…). Each new source lands on the next free fader automatically.
-
-
-https://github.com/user-attachments/assets/81d2e758-2983-4775-951c-c71e33042e1c
-
-<p>
-  <img src="docs/images/menu-bar-panel.png" width="414" alt="The menu-bar panel listing the same four channels as rows, with volume percentages and an Assign button for App Store">
-  &nbsp;
-  <img src="docs/images/pop-up.png" width="484" alt="The on-screen pop-up: Spotify – Bleed It Out • Linkin Park, on channel 4">
+<p align="center">
+  <img src="docs/images/hero.png" width="880" alt="The LCX Mixer window: YouTube, Twitch, GarageBand and Spotify on channels 1–4, four free channels, and App Store in the Unassigned Audio Sources list">
 </p>
+
+LCX Mixer turns a Novation Launch Control XL mk2 into an 8-channel mixer for whatever is making sound: individual Chrome tabs (Spotify, YouTube, Twitch…) and native apps (games, Discord, Music…). Each new source lands on the next free fader automatically.
 
 ## Why it exists
 
 macOS has no per-app volume mixer, and browsers play every tab through one shared audio stream. In practice that means balancing a game, a voice chat and music by hunting through tabs and in-app sliders, often mid-game.
 
 A physical controller solves that: one fader per source, always in the same place, usable without looking or switching windows. LCX Mixer makes that work for both native apps and individual browser tabs, with no setup per session.
+
+https://github.com/user-attachments/assets/81d2e758-2983-4775-951c-c71e33042e1c
 
 **What you get**
 
@@ -66,6 +63,18 @@ In Chrome, open `chrome://extensions`, turn on **Developer mode**, choose **Load
 | Middle knob row | Seek shuttle: turn right to skip forward, left to skip back; the further you turn, the bigger the jumps (5 / 15 / 30 s). Centre stops. |
 
 **LED colours:** green = playing, amber = paused, red = muted, off = empty channel.
+
+## On screen
+
+The **mixer window** (shown at the top) lays the 8 channels out in the same order as the controller's columns. Sources that are playing without a channel wait in **Unassigned Audio Sources** below, where you can assign them or drag them onto a channel.
+
+The **menu-bar panel** shows the same channels as compact rows, one click away:
+
+<img src="docs/images/menu-bar-panel.png" width="402" alt="The menu-bar panel listing the same four channels as rows, with status dots, volume percentages, and an Assign button for App Store">
+
+Touching any control shows a short **pop-up** on the screen where that source is playing, so you can mix without opening anything:
+
+<img src="docs/images/pop-up.png" width="462" alt="The on-screen pop-up: Spotify – Bleed It Out • Linkin Park, on channel 4">
 
 ## Security
 
