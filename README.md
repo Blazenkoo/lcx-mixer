@@ -1,4 +1,4 @@
-<h1 align="center">LCX Mixer</h1>
+<h1 align="center">Launch Control XL (Mk2) Mixer</h1>
 
 <p align="center"><strong>A hardware mixer for everything playing on your Mac.</strong></p>
 
