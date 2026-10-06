@@ -1,8 +1,8 @@
 # LCX Mixer
 
-**A hardware mixer for everything playing on your Mac.** LCX Mixer turns a Novation Launch Control XL mk2 into an 8-channel mixer for whatever is making sound: individual Chrome tabs (Spotify, YouTube, Twitch…) and native apps (games, Discord, Music…). Each new source lands on the next free fader automatically.
-
 ![The LCX Mixer window: YouTube, Twitch, GarageBand and Spotify on channels 1–4, four free channels, and App Store in the Unassigned Audio Sources list](docs/images/mixer-window.png)
+
+**A hardware mixer for everything playing on your Mac.** LCX Mixer turns a Novation Launch Control XL mk2 into an 8-channel mixer for whatever is making sound: individual Chrome tabs (Spotify, YouTube, Twitch…) and native apps (games, Discord, Music…). Each new source lands on the next free fader automatically.
 
 
 https://github.com/user-attachments/assets/81d2e758-2983-4775-951c-c71e33042e1c
@@ -85,7 +85,7 @@ LCX Mixer has **no network attack surface**: there is no server or web app, and 
 
 ## How it was made
 
-LCX Mixer was designed and specified by Blaženko Davidović and built with Claude (Anthropic), from an approved specification through hardware testing on a real controller.
+LCX Mixer was designed and specified by @Blazenkoo (on Github.com) and built with Claude (Anthropic), from an approved specification through hardware testing on a real controller.
 
 ## License
 
