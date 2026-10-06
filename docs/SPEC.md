@@ -167,7 +167,8 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 **Interactions**
 
 - Clicking the icon or name brings that app, or that exact Chrome tab, to the front.
-- Dragging a strip onto another channel moves it there, swapping if occupied. Sources can also be dragged in from the Unassigned list.
+- Dragging a strip from anywhere on it (except the volume bar and buttons, which keep their own behaviour) onto another channel moves it there, swapping if occupied. Sources can also be dragged in from the Unassigned list.
+- Right-clicking a strip opens a menu: **Move to channel** (each channel listed as "Free" or "swap with …"), **Bring to the front** and **Unassign**. It's the non-mouse way to move a channel, and works with VoiceOver.
 - An empty channel shows a dashed outline with "Free".
 
 **Header and footer**
@@ -288,6 +289,8 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [x] Rebuilds keep the audio permission, and the extension updates itself
 - [x] Unplugging and replugging the controller recovers cleanly
 - [x] Restarting the app puts sources back on their channels; a closed source's channel frees after 10 seconds
+- [x] Dragging a strip onto another channel swaps or moves it; the volume bar and buttons still work normally
+- [x] Right-click Move to channel swaps or moves a channel
 - [x] Quitting the mixer app leaves all audio playing, with no volume jump
 - [x] Audio delay is imperceptible in a real League match
 

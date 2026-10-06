@@ -10,6 +10,57 @@ struct ChannelStripView: View {
     private var isMaster: Bool { core.masterActive && index == 0 }
 
     var body: some View {
+        draggableStrip
+            .dropDestination(for: String.self) { items, _ in
+                guard !isMaster, let id = items.first else { return false }
+                core.move(id, to: index)
+                return true
+            } isTargeted: { isTargeted = $0 }
+    }
+
+    /// The whole strip can be dragged onto another channel (the volume bar and buttons keep their own behaviour).
+    @ViewBuilder
+    private var draggableStrip: some View {
+        if let s = source, !isMaster {
+            strip
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+                .draggable(s.id) {
+                    HStack(spacing: 6) {
+                        SourceIcon(source: s, size: 20)
+                        Text("\(index + 1) · \(s.name)").font(.system(size: 13, weight: .semibold))
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                }
+                .contextMenu { channelMenu(s) }
+                .accessibilityHint("Drag onto another channel, or use Move to channel in the context menu. If that channel is in use, the two swap.")
+        } else {
+            strip
+        }
+    }
+
+    /// Right-click menu: the non-mouse way to move a channel (also reachable with VoiceOver).
+    @ViewBuilder
+    private func channelMenu(_ s: Source) -> some View {
+        Menu("Move to channel") {
+            ForEach(core.firstSourceChannel..<MixerCore.channelCount, id: \.self) { ch in
+                if ch != index {
+                    Button(menuLabel(forChannel: ch)) { core.move(s.id, to: ch) }
+                }
+            }
+        }
+        Button("Bring \(s.name) to the front") { core.focus(s.id) }
+        Divider()
+        Button("Unassign") { core.unassign(channel: index) }
+    }
+
+    private func menuLabel(forChannel ch: Int) -> String {
+        if let other = core.source(onChannel: ch) {
+            return "\(ch + 1) · swap with \(other.name)"
+        }
+        return "\(ch + 1) · Free"
+    }
+
+    private var strip: some View {
         VStack(spacing: 8) {
             Text(isMaster ? "Master" : "\(index + 1)")
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -36,34 +87,32 @@ struct ChannelStripView: View {
                     style: StrokeStyle(lineWidth: isTargeted ? 2 : 1, dash: source == nil && !isMaster ? [5, 4] : [])
                 )
         )
-        .dropDestination(for: String.self) { items, _ in
-            guard !isMaster, let id = items.first else { return false }
-            core.move(id, to: index)
-            return true
-        } isTargeted: { isTargeted = $0 }
     }
 
     // MARK: Occupied
 
     @ViewBuilder
     private func occupied(_ s: Source) -> some View {
-        Button { core.focus(s.id) } label: {
-            VStack(spacing: 4) {
-                SourceIcon(source: s, size: 22)
-                    .padding(.vertical, 6)
-                Text(s.name)
-                    .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(1)
-                Text(s.detail.isEmpty ? " " : s.detail)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                    .frame(height: 26, alignment: .top)
-            }
+        VStack(spacing: 4) {
+            SourceIcon(source: s, size: 22)
+                .padding(.vertical, 6)
+            Text(s.name)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+            Text(s.detail.isEmpty ? " " : s.detail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(height: 26, alignment: .top)
         }
-        .buttonStyle(.plain)
-        .help("Bring \(s.name) to the front")
+        // A tap rather than a Button, so a drag that starts here moves the channel instead of being swallowed.
+        .contentShape(Rectangle())
+        .onTapGesture { core.focus(s.id) }
+        .help("Click to bring \(s.name) to the front. Drag the channel to move it.")
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { core.focus(s.id) }
 
         StatusBadge(status: status)
         if s.kind == .tab && !s.canSetVolume {
@@ -95,9 +144,6 @@ struct ChannelStripView: View {
             iconButton("xmark", help: "Unassign from this channel") {
                 core.unassign(channel: index)
             }
-        }
-        .draggable(s.id) {
-            HStack { SourceIcon(source: s, size: 20); Text(s.name) }.padding(6)
         }
     }
 
