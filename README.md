@@ -4,7 +4,8 @@
 
 ![The LCX Mixer window: YouTube, Twitch, GarageBand and Spotify on channels 1–4, four free channels, and App Store in the Unassigned Audio Sources list](docs/images/mixer-window.png)
 
-<!-- Demo video: drag lcx-mixer-demo.mp4 onto this line in GitHub's web editor. -->
+
+https://github.com/user-attachments/assets/81d2e758-2983-4775-951c-c71e33042e1c
 
 <p>
   <img src="docs/images/menu-bar-panel.png" width="414" alt="The menu-bar panel listing the same four channels as rows, with volume percentages and an Assign button for App Store">
