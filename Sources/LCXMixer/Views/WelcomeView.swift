@@ -33,6 +33,30 @@ final class RoundedWindow: NSWindow {
     override func cancelOperation(_ sender: Any?) { close() }
 }
 
+/// Lets the rounded windows be dragged by their visual. The window's own background-drag doesn't
+/// reach through the SwiftUI content, so this sits over the (non-interactive) visual and hands
+/// the mouse-down to the window.
+private struct WindowDragArea: NSViewRepresentable {
+    final class DragView: NSView {
+        /// Where in the window the drag was grabbed.
+        private var grab: NSPoint?
+
+        override func mouseDown(with event: NSEvent) { grab = event.locationInWindow }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let window, let grab else { return }
+            // Keep the grabbed point under the pointer.
+            let pointer = window.convertPoint(toScreen: event.locationInWindow)
+            window.setFrameOrigin(NSPoint(x: pointer.x - grab.x, y: pointer.y - grab.y))
+        }
+
+        override func mouseUp(with event: NSEvent) { grab = nil }
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    }
+    func makeNSView(context: Context) -> DragView { DragView() }
+    func updateNSView(_ nsView: DragView, context: Context) {}
+}
+
 /// The shape and frame every rounded window shares.
 private struct RoundedPanel<Content: View>: View {
     let close: () -> Void
@@ -75,6 +99,7 @@ struct WelcomeView: View {
             VStack(spacing: 0) {
                 TowerVisual(icons: TowerIcons.collect(from: core))
                     .frame(width: 520, height: 300)
+                    .overlay(WindowDragArea())
 
                 VStack(alignment: .leading, spacing: 14 * scale) {
                     Text("Three things to set up")
@@ -163,6 +188,7 @@ struct AboutView: View {
             VStack(spacing: 0) {
                 TowerVisual(icons: TowerIcons.collect(from: core))
                     .frame(width: 520, height: 300)
+                    .overlay(WindowDragArea())
                 VStack(spacing: 6 * scale) {
                     Text("Version \(AppInfo.version)").scaledFont(AppText.callout).foregroundStyle(.secondary)
                     Text(AppInfo.credit).scaledFont(AppText.callout).foregroundStyle(.secondary)

@@ -24,7 +24,12 @@ struct ActivityRain: View {
                         let centre = band.position * length
                         let half = max(band.width * length / 2, thickness)
                         let from = centre - half, to = centre + half
-                        let gradient = Gradient(stops: [
+                        let gradient = Gradient(stops: band.core ? [
+                            .init(color: .primary.opacity(0), location: 0),
+                            .init(color: .primary.opacity(band.opacity), location: 0.3),
+                            .init(color: .primary.opacity(band.opacity), location: 0.7),
+                            .init(color: .primary.opacity(0), location: 1),
+                        ] : [
                             .init(color: .primary.opacity(0), location: 0),
                             .init(color: .primary.opacity(band.opacity), location: 0.5),
                             .init(color: .primary.opacity(0), location: 1),
@@ -57,6 +62,8 @@ final class RainField {
         let position: Double  // 0…1 along the bar
         let width: Double     // as a share of the bar
         let opacity: Double
+        /// The drop's centre: a wider, solid middle rather than a single bright line.
+        var core = false
     }
     struct Drop {
         var bands: [Band]
@@ -76,7 +83,7 @@ final class RainField {
         let life = calm ? 2.4 : 1.6
         seeds.removeAll { t - $0.born > life }
         if active, t >= nextDrop {
-            seeds.append(Seed(position: Double.random(in: 0.08...0.92), born: t, strength: Double.random(in: 0.55...1)))
+            seeds.append(Seed(position: Double.random(in: 0.08...0.92), born: t, strength: Double.random(in: 0.7...1)))
             // Calm drops land less often.
             nextDrop = t + (calm ? Double.random(in: 1.0...2.2) : Double.random(in: 0.35...1.1))
         }
@@ -85,14 +92,14 @@ final class RainField {
             if calm {
                 // Glow in place: fade in quickly, then out slowly. No movement.
                 let glow = age < 0.2 ? age / 0.2 : 1 - (age - 0.2) / 0.8
-                return Drop(bands: [Band(position: seed.position, width: 0.14, opacity: 0.55 * seed.strength * glow)])
+                return Drop(bands: [Band(position: seed.position, width: 0.2, opacity: 0.85 * seed.strength * glow, core: true)])
             }
             let fade = pow(1 - age, 2)
             let travel = age * 0.45                   // the waves spread up to 45% of the bar each way
             return Drop(bands: [
-                Band(position: seed.position, width: 0.06 + age * 0.05, opacity: 0.7 * seed.strength * pow(1 - age, 4)),
-                Band(position: seed.position + travel, width: 0.08 + age * 0.12, opacity: 0.45 * seed.strength * fade),
-                Band(position: seed.position - travel, width: 0.08 + age * 0.12, opacity: 0.45 * seed.strength * fade),
+                Band(position: seed.position, width: 0.12 + age * 0.06, opacity: 0.95 * seed.strength * pow(1 - age, 2.5), core: true),
+                Band(position: seed.position + travel, width: 0.09 + age * 0.12, opacity: 0.6 * seed.strength * fade),
+                Band(position: seed.position - travel, width: 0.09 + age * 0.12, opacity: 0.6 * seed.strength * fade),
             ])
         }
     }
