@@ -31,10 +31,6 @@ final class AudioProcessMonitor {
 
     init(settings: AppSettings) { self.settings = settings }
 
-    static func isChrome(_ bundleID: String) -> Bool {
-        bundleID.hasPrefix("com.google.Chrome")
-    }
-
     /// Group key and display name for an app's bundle identifier.
     func group(for bundleID: String) -> (key: String, name: String?) {
         for rule in settings.groups where rule.isComplete && rule.prefixes.contains(where: { bundleID.hasPrefix($0) }) {
@@ -65,7 +61,8 @@ final class AudioProcessMonitor {
             let processBundle = CA.string(object, kAudioProcessPropertyBundleID) ?? ""
 
             guard let owner = owningApp(for: pid), let ownerBundle = owner.bundleIdentifier else { continue }
-            if ownerBundle == AppPaths.bundleID || AudioProcessMonitor.isChrome(ownerBundle) || AudioProcessMonitor.isChrome(processBundle) {
+            // Browsers controlled tab by tab through the extension are never also a native source.
+            if ownerBundle == AppPaths.bundleID || settings.isPerTabBrowser(ownerBundle) || settings.isPerTabBrowser(processBundle) {
                 continue
             }
             let (key, groupName) = group(for: ownerBundle)
@@ -127,7 +124,7 @@ final class AudioProcessMonitor {
         return found
     }
 
-    static func parentPID(_ pid: pid_t) -> pid_t {
+    nonisolated static func parentPID(_ pid: pid_t) -> pid_t {
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.stride
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]

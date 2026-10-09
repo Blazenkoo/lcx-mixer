@@ -6,7 +6,7 @@
   <img src="docs/images/hero.png" width="880" alt="The LCX Mixer window: YouTube, Twitch, GarageBand and Spotify on channels 1–4, four free channels, and App Store in the Unassigned Audio Sources list">
 </p>
 
-LCX Mixer turns a Novation Launch Control XL mk2 into an 8-channel mixer for whatever is making sound: individual Chrome tabs (Spotify, YouTube, Twitch…) and native apps (games, Discord, Music…). Each new source lands on the next free fader automatically.
+LCX Mixer turns a Novation Launch Control XL mk2 into an 8-channel mixer for whatever is making sound: individual browser tabs (Spotify, YouTube, Twitch…) and native apps (games, Discord, Music…). Each new source lands on the next free fader automatically.
 
 ## Why it exists
 
@@ -19,8 +19,9 @@ https://github.com/user-attachments/assets/81d2e758-2983-4775-951c-c71e33042e1c
 **What you get**
 
 - **Automatic assignment:** a new source takes the next free channel, first come, first served, and keeps it until it closes, even if you restart the app.
-- **Per-tab control:** Spotify, YouTube and Twitch in the same browser each get their own fader.
-- **Hands-free control:** volume on the faders, play/pause and mute on the buttons, and mute-all on the side Mute button.
+- **Per-tab control:** Spotify, YouTube and Twitch in the same browser each get their own fader, in Chrome, Edge, Brave, Arc, Vivaldi or Chromium.
+- **Hands-free control:** volume on the faders, play/pause and mute on the buttons, all media muted on the side Mute button, and your microphone muted on Solo.
+- **Mute list:** apps and websites that should always stay silent, such as chat notifications, never take a channel.
 - **Clear feedback:** controller LEDs, a mixer window, a menu-bar panel and a short on-screen pop-up all show the same state.
 - **Fully local:** no account, no server, no network connections (see *Security*).
 
@@ -30,7 +31,7 @@ The full product specification, including assignment rules, LED colours and edge
 
 - macOS 14.2 or later (Apple silicon)
 - Novation Launch Control XL **mk2** (the app switches it to Factory Template 1 automatically)
-- Google Chrome, for per-tab control
+- Google Chrome or another Chromium browser (Edge, Brave, Arc, Vivaldi, Chromium), for per-tab control
 - Xcode (free from the App Store), to build
 
 ## Build and install
@@ -41,7 +42,7 @@ The full product specification, including assignment rules, LED colours and edge
    If you have an "Apple Development" certificate (Xcode → Settings → Accounts → Manage Certificates), the app keeps its audio permission between rebuilds.
 3. On first use, macOS asks for **System audio recording**. It's needed to control the volume of native apps.
 
-## Chrome extension
+## Browser extension
 
 The app keeps an up-to-date copy of the extension at:
 
@@ -49,20 +50,23 @@ The app keeps an up-to-date copy of the extension at:
 ~/Library/Application Support/LCXMixer/ChromeExtension
 ```
 
-In Chrome, open `chrome://extensions`, turn on **Developer mode**, choose **Load unpacked** and select that folder. Load it from that folder rather than from this repository: that copy updates itself whenever the app is rebuilt.
+In each browser you use, open its extensions page (`chrome://extensions`, `edge://extensions`, `brave://extensions`…), turn on **Developer mode**, choose **Load unpacked** and select that folder. Load it from that folder rather than from this repository: that copy updates itself whenever the app is rebuilt. Settings → Browsers shows which browsers are connected.
 
 ## Controls
 
 | Control | Action |
 | --- | --- |
 | Fader | Volume. If the fader is below the current level it takes over immediately; if it's above, move it down to take over. |
-| Top button row | Play / pause (Chrome tabs). Double-press on a Twitch channel jumps to live. |
+| Top button row | Play / pause (browser tabs). Double-press on a Twitch channel jumps to live. |
 | Bottom button row | Mute. Hold for 1 second to unassign the channel. |
-| Side **Mute** button | Mute all / unmute all |
+| Side **Mute** button | Mute / unmute all media playback: what you hear |
+| Side **Solo** button | Mute / unmute your microphone: what others hear from you |
 | Bottom knob row | Playback speed: centre = 1×, left end 0.5×, right end 2× (LED green when faster, red when slower) |
 | Middle knob row | Seek shuttle: turn right to skip forward, left to skip back; the further you turn, the bigger the jumps (5 / 15 / 30 s). Centre stops. |
 
-**LED colours:** green = playing, amber = paused, red = muted, off = empty channel.
+**Mute and Solo** are deliberately split: Mute silences everything playing on your Mac, Solo silences your current microphone for every app at once (Discord, Zoom, OBS…). Both light up while on.
+
+**LED colours:** green = playing, amber = paused, dim green = a native app (no play/pause), red = muted, off = empty channel.
 
 ## On screen
 
@@ -80,10 +84,10 @@ Touching any control shows a short **pop-up** on the screen where that source is
 
 LCX Mixer has **no network attack surface**: there is no server or web app, and nothing listens on the network.
 
-- Chrome talks to the app only through Chrome's native messaging, which Chrome allows only for this extension's ID.
-- The app and its Chrome bridge connect through a local socket that only your user account can access. Each side checks that the other runs under your account and carries the app's own code signature.
-- Site icons come from Chrome's local icon cache. The app makes no network requests.
-- The only permission requested is System audio recording. No microphone access.
+- Browsers talk to the app only through their native messaging, which they allow only for this extension's ID.
+- The app and its browser bridge connect through a local socket that only your user account can access. Each side checks that the other runs under your account and carries the app's own code signature.
+- Site icons come from the browser's local icon cache. The app makes no network requests.
+- The only permission requested is System audio recording. No microphone access: muting the microphone only switches the input device's mute (or input volume) setting, and the app never listens to it.
 - **About the purple dot:** while a native app is on a channel, macOS shows a purple dot in the menu bar, its standard sign that an app is capturing system audio. That's LCX Mixer taking over the app's sound to set its volume. Click the dot or open Control Center to see the app's name. An orange dot would mean a microphone is in use, which LCX Mixer never does.
 
 ## Known limitations
@@ -91,6 +95,8 @@ LCX Mixer has **no network attack surface**: there is no server or web app, and 
 - **Chrome tab meters** show an activity pulse, not real levels. macOS can't separate the sound of individual tabs.
 - **Twitch live streams:** "pause" silences the tab and keeps the stream live. A background tab can't reliably resume a paused live stream.
 - **Spotify** applies its own loudness curve to its volume slider, so the bottom half of the fader is gentler than on other sources.
+- **Microphone mute:** some audio interfaces, such as the Focusrite Scarlett range, don't let apps mute their inputs. The pop-up says so when you press Solo.
+- **Side button lights** (Mute, Solo) on the Launch Control XL mk2 are yellow only.
 - To check the audio permission and to identify which app a background audio process belongs to, the app uses two undocumented macOS functions. Future macOS versions could change them.
 
 ## How it was made

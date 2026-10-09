@@ -4,7 +4,7 @@ import CoreAudio
 enum SourceKind: Equatable { case app, tab }
 
 struct Source: Identifiable, Equatable {
-    let id: String          // "app:<groupKey>" or "tab:<tabId>"
+    let id: String          // "app:<groupKey>" or "tab:<browser bundle ID>:<tabId>"
     let kind: SourceKind
     var name: String
     var detail: String
@@ -27,19 +27,31 @@ struct Source: Identifiable, Equatable {
     var pids: [pid_t] = []
     var bundleIDs: [String] = []
 
-    // Chrome tabs
+    // Browser tabs
     var tabId: Int?
     var windowId: Int?
+    /// The extension connection the tab was last reported on (commands go back through it).
+    var browserConnection: Int32?
+    /// The browser's bundle ID, e.g. "com.brave.Browser".
+    var browserKey: String = ""
+    /// "Brave", shown only while tabs from more than one browser are in the mixer.
+    var browserLabel: String?
     var host: String = ""
     /// Chrome window frame in screen points, top-left origin (as Chrome reports it).
     var windowBounds: CGRect?
 
     var isTwitch: Bool { host.hasSuffix("twitch.tv") }
 
+    /// The site name, plus the browser when several are in use ("YouTube · Brave").
+    var nameWithBrowser: String {
+        guard kind == .tab, let browserLabel else { return name }
+        return "\(name) · \(browserLabel)"
+    }
+
     /// "YouTube – Video title" for tabs; just the app name for native apps.
     var displayName: String {
-        guard kind == .tab, !detail.isEmpty, detail != name else { return name }
-        return "\(name) – \(detail)"
+        guard kind == .tab, !detail.isEmpty, detail != name else { return nameWithBrowser }
+        return "\(nameWithBrowser) – \(detail)"
     }
 }
 

@@ -55,6 +55,8 @@ struct UnassignedListView: View {
                 Text(s.displayName).font(.system(size: 12, weight: .medium)).lineLimit(1).truncationMode(.tail)
                 if s.permissionNeeded {
                     Text("Permission needed").font(.caption2).foregroundStyle(.orange)
+                } else if core.isListMuted(s.id) {
+                    Text("Muted by list").font(.caption2).foregroundStyle(.red)
                 } else if !compact {
                     Text(core.isManuallyUnassigned(s.id) ? "Unassigned by you" : "Waiting for a free channel")
                         .font(.caption2).foregroundStyle(.secondary)
@@ -67,6 +69,10 @@ struct UnassignedListView: View {
             if s.permissionNeeded {
                 Button("Open Settings") { AudioCapturePermission.openSystemSettings() }
                     .controlSize(.small)
+            } else if core.isListMuted(s.id) {
+                Button("Unmute") { core.removeFromMuteList(s.id) }
+                    .controlSize(.small)
+                    .help("Take \(s.name) off the mute list")
             } else {
                 Button("Assign") { core.assign(s.id) }
                     .controlSize(.small)
@@ -74,6 +80,9 @@ struct UnassignedListView: View {
                     .help(core.hasFreeChannel ? "Put on the first free channel" : "No free channel")
             }
             Menu {
+                if !core.isListMuted(s.id) {
+                    Button("Always mute") { core.alwaysMute(s.id) }
+                }
                 Button("Always ignore") { core.ignore(s.id) }
             } label: {
                 Image(systemName: "ellipsis")

@@ -16,7 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         core.onOSD = { [weak self] message in self?.osd.show(message) }
         core.onStatusChange = { [weak self] in self?.updateStatusIcon() }
 
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.target = self
             button.action = #selector(togglePopover(_:))
@@ -76,16 +76,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - Status item
 
     private var muteAllObservation: Any?
+    private var micObservation: Any?
 
     private func observeMuteAll() {
         muteAllObservation = core.$muteAll.sink { [weak self] _ in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.updateStatusIcon() } }
         }
+        micObservation = core.$micMuted.sink { [weak self] _ in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.updateStatusIcon() } }
+        }
     }
 
     private func updateStatusIcon() {
-        statusItem?.button?.image = StatusIcon.make(connected: core.controllerConnected, muteAll: core.muteAll)
-        statusItem?.button?.toolTip = core.controllerConnected ? "LCX Mixer" : "LCX Mixer — controller not connected"
+        statusItem?.button?.image = StatusIcon.make(connected: core.controllerConnected, muteAll: core.muteAll, micMuted: core.micMuted)
+        var tip = core.controllerConnected ? "LCX Mixer" : "LCX Mixer — controller not connected"
+        if core.micMuted { tip += " · microphone muted" }
+        statusItem?.button?.toolTip = tip
     }
 
     @objc private func togglePopover(_ sender: Any?) {
@@ -147,6 +153,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
 /// Monochrome template icon: three faders. Slash when disconnected, filled tile while mute-all is on.
 enum StatusIcon {
+    static func make(connected: Bool, muteAll: Bool, micMuted: Bool) -> NSImage {
+        let mixer = make(connected: connected, muteAll: muteAll)
+        guard micMuted,
+              let mic = NSImage(systemSymbolName: "mic.slash.fill", accessibilityDescription: "Microphone muted")?
+                .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold)) else { return mixer }
+        // The mixer icon with a small mic-off badge beside it.
+        let size = NSSize(width: 18 + 3 + mic.size.width, height: 18)
+        let image = NSImage(size: size, flipped: false) { _ in
+            mixer.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
+            mic.draw(in: NSRect(x: 21, y: (18 - mic.size.height) / 2, width: mic.size.width, height: mic.size.height))
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "LCX Mixer, microphone muted"
+        return image
+    }
+
     static func make(connected: Bool, muteAll: Bool) -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size, flipped: false) { rect in

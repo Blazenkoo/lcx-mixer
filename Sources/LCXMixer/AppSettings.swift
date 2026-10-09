@@ -52,7 +52,26 @@ final class AppSettings: ObservableObject {
     @Published var naturalCurve: Bool { didSet { defaults.set(naturalCurve, forKey: "naturalCurve") } }
     @Published var alwaysInDock: Bool { didSet { defaults.set(alwaysInDock, forKey: "alwaysInDock") } }
     @Published var groups: [GroupRule] { didSet { save(groups, "groups") } }
-    @Published var ignoreList: [String] { didSet { save(ignoreList, "ignoreList") } }
+    /// Apps (bundle or group IDs) and websites the mixer leaves completely alone.
+    /// An entry lives on one list only: adding it here takes it off the mute list.
+    @Published var ignoreList: [String] {
+        didSet {
+            save(ignoreList, "ignoreList")
+            let overlap = Set(ignoreList).intersection(muteList)
+            if !overlap.isEmpty { muteList.removeAll { overlap.contains($0) } }
+        }
+    }
+    /// Apps (bundle or group IDs) and websites that are always silenced and never take a channel.
+    /// An entry lives on one list only: adding it here takes it off the ignore list.
+    @Published var muteList: [String] {
+        didSet {
+            save(muteList, "muteList")
+            let overlap = Set(muteList).intersection(ignoreList)
+            if !overlap.isEmpty { ignoreList.removeAll { overlap.contains($0) } }
+        }
+    }
+    /// Browsers whose extension has connected at least once; from then on they're controlled tab by tab.
+    @Published var extensionBrowsers: [String] { didSet { save(extensionBrowsers, "extensionBrowsers") } }
     private(set) var rememberedVolumes: [String: Float]
 
     static let defaultGroups = [GroupRule(name: "League", prefixes: ["com.riotgames."])]
@@ -79,7 +98,16 @@ final class AppSettings: ObservableObject {
         alwaysInDock = defaults.bool(forKey: "alwaysInDock")
         groups = AppSettings.load("groups", defaults) ?? AppSettings.defaultGroups
         ignoreList = AppSettings.load("ignoreList", defaults) ?? AppSettings.defaultIgnore
+        muteList = AppSettings.load("muteList", defaults) ?? []
+        extensionBrowsers = AppSettings.load("extensionBrowsers", defaults) ?? []
         rememberedVolumes = (defaults.dictionary(forKey: "rememberedVolumes") as? [String: Float]) ?? [:]
+
+        // Entries saved on both lists by earlier builds stay on the mute list only.
+        if !Set(ignoreList).isDisjoint(with: muteList) {
+            let muted = Set(muteList)
+            ignoreList.removeAll { muted.contains($0) }
+            save(ignoreList, "ignoreList")
+        }
     }
 
     func remember(volume: Float, for key: String) {
@@ -94,6 +122,17 @@ final class AppSettings: ObservableObject {
 
     func isIgnored(_ keys: [String]) -> Bool {
         keys.contains { key in ignoreList.contains(where: { !$0.isEmpty && $0 == key }) }
+    }
+
+    /// Chrome is always handled tab by tab; another browser once its extension has connected.
+    /// Until then it shows up as one whole app, like Safari or Firefox.
+    func isPerTabBrowser(_ bundleID: String) -> Bool {
+        guard let browser = Browsers.info(forBundleID: bundleID) else { return false }
+        return browser.bundleID.hasPrefix(Browsers.chrome.bundleID) || extensionBrowsers.contains(browser.bundleID)
+    }
+
+    func isMuteListed(_ keys: [String]) -> Bool {
+        keys.contains { key in muteList.contains(where: { !$0.isEmpty && $0 == key }) }
     }
 
     /// Fader position (0…1) → gain (0…1).

@@ -51,6 +51,7 @@ struct ChannelStripView: View {
         Button("Bring \(s.name) to the front") { core.focus(s.id) }
         Divider()
         Button("Unassign") { core.unassign(channel: index) }
+        Button("Always mute \(s.name)") { core.alwaysMute(s.id) }
     }
 
     private func menuLabel(forChannel ch: Int) -> String {
@@ -96,7 +97,7 @@ struct ChannelStripView: View {
         VStack(spacing: 4) {
             SourceIcon(source: s, size: 22)
                 .padding(.vertical, 6)
-            Text(s.name)
+            Text(s.nameWithBrowser)
                 .font(.system(size: 13, weight: .semibold))
                 .lineLimit(1)
             Text(s.detail.isEmpty ? " " : s.detail)

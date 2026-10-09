@@ -99,6 +99,11 @@
 
   function currentVolume() {
     if (isSpotify) return spotifySliderValue();
+    if (isTwitch) {
+      const input = twitchVolumeInput();
+      const v = input && rangeValue(input);
+      if (v !== null && v !== undefined) return v;
+    }
     const yt = ytPlayer();
     if (yt) return yt.getVolume() / 100;
     const el = primary();
@@ -117,16 +122,36 @@
 
   const nativeValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
 
-  function setSpotifyRange(v) {
-    const input = spotifyRangeInput();
-    if (!input) return false;
+  // Moves a site's own range slider (0…1 of its min…max) the way a user would, so the site's
+  // state, its UI and the sound all follow.
+  function setRange(input, v) {
     const min = parseFloat(input.min || '0');
     const max = parseFloat(input.max || '1');
     input.step = 'any';
     nativeValueSetter.call(input, String(min + v * (max - min)));
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function rangeValue(input) {
+    const min = parseFloat(input.min || '0');
+    const max = parseFloat(input.max || '1');
+    const v = (parseFloat(input.value) - min) / ((max - min) || 1);
+    return isFinite(v) ? Math.max(0, Math.min(1, v)) : null;
+  }
+
+  function setSpotifyRange(v) {
+    const input = spotifyRangeInput();
+    if (!input) return false;
+    setRange(input, v);
     return true;
+  }
+
+  // Twitch: its player volume slider. If Twitch renames it, volume still works through the video element.
+  function twitchVolumeInput() {
+    return document.querySelector('input[data-a-target="player-volume-slider"]') ||
+      document.querySelector('[data-a-target="player-volume-slider"] input[type="range"]') ||
+      document.querySelector('.video-player input[type="range"][aria-label*="olume" i]');
   }
 
   function spotifyVolumeBar() {
@@ -179,11 +204,7 @@
 
   function spotifySliderValue() {
     const input = spotifyRangeInput();
-    if (!input) return null;
-    const min = parseFloat(input.min || '0');
-    const max = parseFloat(input.max || '1');
-    const v = (parseFloat(input.value) - min) / ((max - min) || 1);
-    return isFinite(v) ? Math.max(0, Math.min(1, v)) : null;
+    return input ? rangeValue(input) : null;
   }
 
   function applyVolume(v) {
@@ -193,6 +214,10 @@
     if (yt) {
       yt.setVolume(Math.round(v * 100));
       return;
+    }
+    if (isTwitch) {
+      const input = twitchVolumeInput();
+      if (input) { try { setRange(input, v); } catch (e) { /* fall through to the element */ } }
     }
     media.forEach((el) => { try { el.volume = v; } catch (e) { /* ignore */ } });
   }

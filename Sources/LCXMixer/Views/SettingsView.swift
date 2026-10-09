@@ -1,5 +1,36 @@
 import SwiftUI
 
+/// A Settings section title, optionally with a description right under it.
+/// Use this for every section that has a description, so they all look the same.
+/// Text aligns to the leading edge, which follows the reading direction: left for left-to-right
+/// languages, flipping automatically for right-to-left ones. (Left to the system's defaults,
+/// grouped forms on macOS align footers to the trailing edge, which is what put them on the right.)
+struct SectionHeader: View {
+    let title: String
+    let description: String?
+
+    init(_ title: String, description: String? = nil) {
+        self.title = title
+        self.description = description
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+            if let description {
+                Text(description)
+                    .font(.caption)
+                    .fontWeight(.regular)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.bottom, description == nil ? 0 : 6)
+    }
+}
+
 /// A setting's title with an optional description underneath, inside the same row (no separator between them).
 private struct SettingLabel: View {
     let title: String
@@ -21,7 +52,6 @@ private struct SettingLabel: View {
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var core: MixerCore
-    @State private var newIgnore = ""
     @State private var newGroupName = ""
     @State private var newGroupPrefixes = ""
 
@@ -65,20 +95,10 @@ struct SettingsView: View {
             }
 
             groupsSection
+            muteSection
             ignoreSection
 
-            Section("Chrome") {
-                HStack {
-                    Circle().fill(core.chromeConnected ? Color.green : Color.secondary).frame(width: 7, height: 7)
-                        .accessibilityHidden(true)
-                    SettingLabel(title: core.chromeConnected ? "Extension connected" : "Extension not connected",
-                                 description: "In Chrome open chrome://extensions, turn on Developer mode, choose Load unpacked and select the extension folder.")
-                    Spacer()
-                    Button("Show extension folder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([AppPaths.extensionFolder])
-                    }
-                }
-            }
+            browsersSection
         }
         .formStyle(.grouped)
         .frame(width: 560, height: 700)
@@ -123,6 +143,7 @@ struct SettingsView: View {
                         TextField("Bundle ID prefixes", text: $group.prefixesText, prompt: Text("e.g. com.riotgames."))
                             .labelsHidden()
                             .textFieldStyle(.roundedBorder)
+                            .font(.system(.body, design: .monospaced))
                             .accessibilityLabel("Bundle ID prefixes for \(group.name.isEmpty ? "unnamed group" : group.name)")
                         Button {
                             settings.groups.removeAll { $0.id == group.id }
@@ -159,6 +180,7 @@ struct SettingsView: View {
                     TextField("New group bundle ID prefixes", text: $newGroupPrefixes, prompt: Text("e.g. com.riotgames."))
                         .labelsHidden()
                         .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
                         .accessibilityLabel("Bundle ID prefixes for the new group")
                         .onSubmit(addGroup)
                     Button("Add", action: addGroup)
@@ -176,10 +198,7 @@ struct SettingsView: View {
                 }
             }
         } header: {
-            Text("App groups")
-        } footer: {
-            Text("Apps whose bundle ID starts with one of a group's prefixes share one channel, for example the League client and game. Changes apply to apps that start playing afterwards.")
-                .font(.caption).foregroundStyle(.secondary)
+            SectionHeader("App groups", description: "Apps whose bundle ID starts with one of a group's prefixes share one channel, for example the League client and game. Changes apply to apps that start playing afterwards.")
         }
     }
 
@@ -191,41 +210,166 @@ struct SettingsView: View {
         newGroupPrefixes = ""
     }
 
-    // MARK: - Ignore list
+    // MARK: - Browsers
 
-    private var ignoreSection: some View {
-        Section("Ignore list") {
-            ForEach(settings.ignoreList, id: \.self) { item in
+    private var browsersSection: some View {
+        Section {
+            let rows = browserRows
+            if rows.isEmpty {
+                Text("No supported browser is open.").foregroundStyle(.secondary)
+            }
+            ForEach(rows) { row in
                 HStack {
-                    Text(item).font(.system(.body, design: .monospaced))
+                    Circle().fill(row.connections > 0 ? Color.green : Color.secondary).frame(width: 7, height: 7)
+                        .accessibilityHidden(true)
+                    Text(row.browser.name)
                     Spacer()
-                    Button {
-                        settings.ignoreList.removeAll { $0 == item }
-                    } label: {
-                        Image(systemName: "minus.circle")
-                            .frame(width: 20, height: 20)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Stop ignoring \(item)")
-                    .accessibilityLabel("Remove \(item) from the ignore list")
+                    Text(row.connections == 0 ? "Extension not connected"
+                         : row.connections == 1 ? "Connected" : "Connected (\(row.connections) profiles)")
+                        .foregroundStyle(row.connections > 0 ? Color.primary : Color.secondary)
                 }
+                .accessibilityElement(children: .combine)
             }
             HStack {
-                TextField("Add to ignore list", text: $newIgnore, prompt: Text("Bundle ID or website, e.g. zoom.us"))
+                SettingLabel(title: "Add the extension to a browser",
+                             description: "Open the browser's extensions page, turn on Developer mode, choose Load unpacked and select the extension folder. Works in Chrome, Edge, Brave, Arc, Vivaldi and Chromium.")
+                Spacer()
+                Button("Show extension folder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([AppPaths.extensionFolder])
+                }
+            }
+        } header: {
+            SectionHeader("Browsers", description: "Each tab in a connected browser gets its own channel. Until its extension first connects, a browser other than Chrome appears as one whole app.")
+        }
+    }
+
+    private struct BrowserRow: Identifiable {
+        let browser: BrowserInfo
+        let connections: Int
+        var id: String { browser.bundleID }
+    }
+
+    /// Browsers that are open or connected, with how many extension connections each has.
+    private var browserRows: [BrowserRow] {
+        let running = Set(Browsers.running)
+        return Browsers.all.compactMap { browser in
+            let count = core.browserConnections.filter { $0.browser == browser }.count
+            return (count > 0 || running.contains(browser)) ? BrowserRow(browser: browser, connections: count) : nil
+        }
+    }
+
+    // MARK: - Mute list and ignore list
+
+    private var muteSection: some View {
+        Section {
+            KeyListEditor(
+                items: $settings.muteList,
+                listName: "mute list",
+                prompt: "e.g. slack.com",
+                moveLabel: "Move to ignore list",
+                move: { item in settings.ignoreList.append(item) }
+            )
+        } header: {
+            SectionHeader("Mute list", description: "Always silenced and kept off the channels. They still show under Unassigned Audio Sources, where Unmute takes them off this list.")
+        }
+    }
+
+    private var ignoreSection: some View {
+        Section {
+            KeyListEditor(
+                items: $settings.ignoreList,
+                listName: "ignore list",
+                prompt: "e.g. zoom.us",
+                moveLabel: "Move to mute list",
+                move: { item in settings.muteList.append(item) }
+            )
+        } header: {
+            SectionHeader("Ignore list", description: "Left completely alone: they play as normal and never appear in the mixer.")
+        }
+    }
+}
+
+/// An editable list of bundle IDs or websites, laid out like App groups: one block, no separators.
+/// Entries sit in code-font fields, so they can be edited, selected and copied. Each row can be moved
+/// to the other list or removed; the last row adds a new entry.
+private struct KeyListEditor: View {
+    @Binding var items: [String]
+    let listName: String
+    let prompt: String
+    let moveLabel: String
+    let move: (String) -> Void
+    @State private var newItem = ""
+
+    private var trimmedNew: String { newItem.trimmingCharacters(in: .whitespaces) }
+
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                GridRow(alignment: .center) {
+                    TextField("Entry", text: binding(at: index), prompt: Text(prompt))
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                        .accessibilityLabel("\(item) on the \(listName)")
+                        .onSubmit { tidy() }
+                    HStack(spacing: 2) {
+                        Menu {
+                            Button(moveLabel) { move(item) }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .frame(width: 22)
+                        .help(moveLabel)
+                        .accessibilityLabel("More actions for \(item)")
+                        Button {
+                            items.removeAll { $0 == item }
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .frame(width: 20, height: 20)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Remove from the \(listName)")
+                        .accessibilityLabel("Remove \(item) from the \(listName)")
+                    }
+                    .frame(width: 52)
+                }
+            }
+            GridRow(alignment: .center) {
+                TextField("New entry", text: $newItem, prompt: Text("Bundle ID or website, \(prompt)"))
                     .labelsHidden()
                     .textFieldStyle(.roundedBorder)
-                    .accessibilityLabel("Bundle ID or website to ignore")
-                    .onSubmit(addIgnore)
-                Button("Add", action: addIgnore)
-                    .disabled(newIgnore.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .font(.system(.body, design: .monospaced))
+                    .accessibilityLabel("Bundle ID or website to add to the \(listName)")
+                    .onSubmit(add)
+                Button("Add", action: add)
+                    .disabled(trimmedNew.isEmpty)
+                    .frame(width: 52)
             }
         }
     }
 
-    private func addIgnore() {
-        let value = newIgnore.trimmingCharacters(in: .whitespaces)
-        if !value.isEmpty && !settings.ignoreList.contains(value) { settings.ignoreList.append(value) }
-        newIgnore = ""
+    private func binding(at index: Int) -> Binding<String> {
+        Binding(
+            get: { items.indices.contains(index) ? items[index] : "" },
+            set: { value in if items.indices.contains(index) { items[index] = value } }
+        )
+    }
+
+    private func add() {
+        let value = trimmedNew
+        if !value.isEmpty && !items.contains(value) { items.append(value) }
+        newItem = ""
+    }
+
+    /// After editing: trim spaces, drop empty entries and duplicates.
+    private func tidy() {
+        var seen = Set<String>()
+        let cleaned = items
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+        if cleaned != items { items = cleaned }
     }
 }

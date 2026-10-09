@@ -6,6 +6,7 @@ enum ControllerEvent {
     case topButton(index: Int, pressed: Bool)
     case bottomButton(index: Int, pressed: Bool)
     case sideMute(pressed: Bool)
+    case sideSolo(pressed: Bool)
     case seekKnob(index: Int, value: Int)
     case speedKnob(index: Int, value: Int)
 }
@@ -130,6 +131,8 @@ final class MIDIController {
                     events.append(.bottomButton(index: idx, pressed: pressed))
                 } else if d1 == LCXL.muteNote {
                     events.append(.sideMute(pressed: pressed))
+                } else if d1 == LCXL.soloNote {
+                    events.append(.sideSolo(pressed: pressed))
                 }
             default:
                 break

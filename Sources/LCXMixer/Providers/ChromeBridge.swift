@@ -1,30 +1,40 @@
 import Foundation
 
-/// Local socket server the native-messaging bridge connects to. Messages are newline-delimited JSON.
+/// Local socket server the native-messaging bridges connect to. Each browser (and each browser
+/// profile) runs its own bridge process, so several connections can be open at once.
+/// Messages are newline-delimited JSON. Callbacks arrive on the main thread.
 final class ChromeBridgeServer {
-    var onMessage: (([String: Any]) -> Void)?
-    var onConnectionChange: ((Bool) -> Void)?
+    /// A connection's ID, the process ID of its bridge, and whether it just opened (true) or closed (false).
+    var onClient: ((_ id: Int32, _ bridgePID: pid_t, _ connected: Bool) -> Void)?
+    var onMessage: ((_ id: Int32, _ message: [String: Any]) -> Void)?
+
+    private final class Client {
+        let fd: Int32
+        var buffer = Data()
+        var source: DispatchSourceRead?
+        init(fd: Int32) { self.fd = fd }
+    }
 
     private let queue = DispatchQueue(label: "lcxmixer.bridge")
     private var listenFD: Int32 = -1
-    private var clientFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?
-    private var readSource: DispatchSourceRead?
-    private var buffer = Data()
+    /// Keyed by connection ID, which only ever counts up (socket numbers get reused).
+    private var clients: [Int32: Client] = [:]
+    private var nextID: Int32 = 1
 
     func start() {
         queue.async { self.listen() }
     }
 
-    func send(_ message: [String: Any]) {
+    func send(to id: Int32, _ message: [String: Any]) {
         guard var data = try? JSONSerialization.data(withJSONObject: message) else { return }
         data.append(0x0A)
         queue.async {
-            guard self.clientFD >= 0 else { return }
+            guard let client = self.clients[id] else { return }
             data.withUnsafeBytes { raw in
                 var offset = 0
                 while offset < raw.count {
-                    let n = write(self.clientFD, raw.baseAddress!.advanced(by: offset), raw.count - offset)
+                    let n = write(client.fd, raw.baseAddress!.advanced(by: offset), raw.count - offset)
                     if n <= 0 { break }
                     offset += n
                 }
@@ -57,7 +67,7 @@ final class ChromeBridgeServer {
         }
         umask(previousMask)
         chmod(path, 0o600)
-        guard bound == 0, Darwin.listen(fd, 4) == 0 else {
+        guard bound == 0, Darwin.listen(fd, 8) == 0 else {
             log("bind/listen failed", errno)
             close(fd)
             return
@@ -80,45 +90,51 @@ final class ChromeBridgeServer {
         }
         var on: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
-        dropClient(notify: false)
-        clientFD = fd
-        buffer.removeAll()
+        var pid: pid_t = 0
+        var length = socklen_t(MemoryLayout<pid_t>.size)
+        if getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &length) != 0 { pid = 0 }
+
+        let id = nextID
+        nextID += 1
+        let client = Client(fd: fd)
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
-        source.setEventHandler { [weak self] in self?.readClient() }
+        source.setEventHandler { [weak self] in self?.readClient(id) }
         source.resume()
-        readSource = source
-        DispatchQueue.main.async { self.onConnectionChange?(true) }
+        client.source = source
+        clients[id] = client
+        DispatchQueue.main.async { self.onClient?(id, pid, true) }
     }
 
-    private func readClient() {
+    private func readClient(_ id: Int32) {
+        guard let client = clients[id] else { return }
         var chunk = [UInt8](repeating: 0, count: 65536)
-        let n = read(clientFD, &chunk, chunk.count)
+        let n = read(client.fd, &chunk, chunk.count)
         if n <= 0 {
-            dropClient(notify: true)
+            dropClient(id)
             return
         }
-        buffer.append(contentsOf: chunk[0..<n])
-        while let newline = buffer.firstIndex(of: 0x0A) {
-            let line = buffer[buffer.startIndex..<newline]
-            buffer.removeSubrange(buffer.startIndex...newline)
+        client.buffer.append(contentsOf: chunk[0..<n])
+        while let newline = client.buffer.firstIndex(of: 0x0A) {
+            let line = client.buffer[client.buffer.startIndex..<newline]
+            client.buffer.removeSubrange(client.buffer.startIndex...newline)
             guard !line.isEmpty,
                   let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else { continue }
-            DispatchQueue.main.async { self.onMessage?(object) }
+            DispatchQueue.main.async { self.onMessage?(id, object) }
         }
     }
 
-    private func dropClient(notify: Bool) {
-        readSource?.cancel()
-        readSource = nil
-        if clientFD >= 0 { close(clientFD) }
-        clientFD = -1
-        if notify { DispatchQueue.main.async { self.onConnectionChange?(false) } }
+    private func dropClient(_ id: Int32) {
+        guard let client = clients.removeValue(forKey: id) else { return }
+        client.source?.cancel()
+        close(client.fd)
+        DispatchQueue.main.async { self.onClient?(id, 0, false) }
     }
 
-    // MARK: - Chrome registration
+    // MARK: - Browser registration
 
-    /// Writes Chrome's native-messaging host manifest and copies the extension to a stable folder.
-    static func registerWithChrome() {
+    /// Writes the native-messaging host manifest for every supported browser that has a data folder
+    /// (Chrome always), and copies the extension to a stable folder.
+    static func registerWithBrowsers() {
         let fm = FileManager.default
         guard let executable = Bundle.main.executablePath else { return }
         let manifest: [String: Any] = [
@@ -129,9 +145,9 @@ final class ChromeBridgeServer {
             "allowed_origins": ["chrome-extension://\(AppPaths.extensionID)/"],
         ]
         let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        for browserDir in ["Google/Chrome", "Google/Chrome Beta", "Google/Chrome Canary"] {
-            let browser = base.appendingPathComponent(browserDir)
-            guard browserDir == "Google/Chrome" || fm.fileExists(atPath: browser.path) else { continue }
+        for info in Browsers.all {
+            let browser = base.appendingPathComponent(info.dataFolder)
+            guard info == Browsers.chrome || fm.fileExists(atPath: browser.path) else { continue }
             let hosts = browser.appendingPathComponent("NativeMessagingHosts")
             try? fm.createDirectory(at: hosts, withIntermediateDirectories: true)
             // Clean up manifests left by earlier versions of this app under a different host name.

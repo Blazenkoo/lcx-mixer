@@ -25,10 +25,17 @@ final class MixerCore: ObservableObject {
     @Published private(set) var sources: [String: Source] = [:] { didSet { scheduleRefresh(); saveLayout() } }
     @Published private(set) var waiting: [String] = []
     @Published private(set) var manual: [String] = []
+    /// Sources silenced by the mute list: shown in Unassigned, never on a channel.
+    @Published private(set) var listMuted: [String] = []
     @Published private(set) var muteAll = false { didSet { scheduleRefresh() } }
+    /// The Mac's current microphone is muted (Solo button).
+    @Published private(set) var micMuted = false { didSet { scheduleRefresh() } }
     @Published private(set) var faders: [FaderState] = Array(repeating: FaderState(), count: MixerCore.channelCount)
     @Published private(set) var controllerConnected = false { didSet { onStatusChange?() } }
-    @Published private(set) var chromeConnected = false
+    /// At least one browser's extension is connected.
+    @Published private(set) var browserConnected = false
+    /// Every open extension connection (one per browser profile).
+    @Published private(set) var browserConnections: [BrowserConnection] = []
     @Published private(set) var chromeProblem = false
     /// Chrome loaded the extension from the project folder instead of the app's copy, so it never self-updates.
     @Published private(set) var wrongExtensionFolder = false
@@ -42,14 +49,16 @@ final class MixerCore: ObservableObject {
     var onOSD: ((OSDMessage) -> Void)?
     var onStatusChange: (() -> Void)?
 
-    private let midi = MIDIController()
-    private let engine = AudioEngine()
-    private let monitor: AudioProcessMonitor
-    private let bridge = ChromeBridgeServer()
+    /// The hardware the mixer is controlled from.
+    private let controller: ControllerDriver = LaunchControlXLDriver()
+    /// Output device and master volume (and the process taps the native provider uses).
+    private let engine: AudioEngine
+    /// Source providers: native apps and browser tabs.
+    private let native: NativeAppProvider
+    private let chrome = ChromeProvider()
+    private let microphone = Microphone()
     private let icons = IconLoader()
     private let launchedAt = Date()
-
-    private var lastLEDs: [Int: UInt8] = [:]
 
     // Knobs: speed (bottom row) and seek shuttle (middle row)
     private var speedAttached = Array(repeating: false, count: MixerCore.channelCount)
@@ -69,7 +78,6 @@ final class MixerCore: ObservableObject {
     private var pendingTabVolume = Set<String>()
     private var masterSetAt = Date.distantPast
     private var permissionRequested = false
-    private var chromeGrace: DispatchWorkItem?
     private var cancellables = Set<AnyCancellable>()
     private var pollCount = 0
 
@@ -84,7 +92,9 @@ final class MixerCore: ObservableObject {
 
     init(settings: AppSettings) {
         self.settings = settings
-        self.monitor = AudioProcessMonitor(settings: settings)
+        let engine = AudioEngine()
+        self.engine = engine
+        self.native = NativeAppProvider(settings: settings, engine: engine)
     }
 
     // MARK: - Derived state
@@ -94,10 +104,12 @@ final class MixerCore: ObservableObject {
     var hasFreeChannel: Bool { firstFreeChannel(includingHeld: true) != nil }
 
     var unassigned: [Source] {
-        (waiting + manual).compactMap { sources[$0] }
+        (waiting + manual + listMuted).compactMap { sources[$0] }
     }
 
     func isManuallyUnassigned(_ id: String) -> Bool { manual.contains(id) }
+
+    func isListMuted(_ id: String) -> Bool { listMuted.contains(id) }
 
     func channel(of id: String) -> Int? { channels.firstIndex(of: id) }
 
@@ -146,15 +158,15 @@ final class MixerCore: ObservableObject {
 
     func start() {
         loadLayout()
-        ChromeBridgeServer.registerWithChrome()
 
-        midi.onEvent = { [weak self] event in MainActor.assumeIsolated { self?.handle(event) } }
-        midi.onConnectionChange = { [weak self] connected in MainActor.assumeIsolated { self?.controllerConnectionChanged(connected) } }
-        midi.start()
+        chrome.onTabs = { [weak self] connection, tabs in MainActor.assumeIsolated { self?.handleTabs(tabs, from: connection) } }
+        chrome.onConnectionsChange = { [weak self] connections in MainActor.assumeIsolated { self?.browsersChanged(connections) } }
+        chrome.start()
 
-        bridge.onMessage = { [weak self] message in MainActor.assumeIsolated { self?.handleBridge(message) } }
-        bridge.onConnectionChange = { [weak self] connected in MainActor.assumeIsolated { self?.bridgeConnectionChanged(connected) } }
-        bridge.start()
+        controller.onAction = { [weak self] action in MainActor.assumeIsolated { self?.handle(action) } }
+        controller.onConnectionChange = { [weak self] connected in MainActor.assumeIsolated { self?.controllerConnectionChanged(connected) } }
+        controller.onNeedsLights = { [weak self] in MainActor.assumeIsolated { self?.refreshLEDs() } }
+        controller.start()
 
         engine.onOutputDeviceChange = { [weak self] in self?.outputChanged() }
         engine.onTapFailure = { id in log("Could not control audio of", id) }
@@ -174,11 +186,15 @@ final class MixerCore: ObservableObject {
         settings.$ignoreList.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.applyIgnoreList() } }
         }.store(in: &cancellables)
+        settings.$muteList.dropFirst().sink { [weak self] _ in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.applyMuteList() } }
+        }.store(in: &cancellables)
     }
 
     func shutdown() {
-        engine.stopAll()
-        if controllerConnected { midi.send(LCXL.resetLEDs) }
+        native.releaseAll()
+        microphone.restore()
+        controller.clearLights()
     }
 
     // MARK: - Polling
@@ -187,14 +203,18 @@ final class MixerCore: ObservableObject {
         pollCount += 1
         pollNativeApps()
 
+        // Follows mute changes made elsewhere, and a switch to another microphone.
+        let mic = microphone.isMuted
+        if mic != micMuted { micMuted = mic }
+
         if masterSupported, let v = engine.masterVolume, abs(v - masterVolume) > 0.01,
            Date().timeIntervalSince(masterSetAt) > 1 {
             masterVolume = v
             if masterActive { faders[0].attached = false }
         }
 
-        let chromeRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "com.google.Chrome").isEmpty
-        let problem = chromeRunning && !chromeConnected && Date().timeIntervalSince(launchedAt) > 10
+        let browserRunning = !ChromeProvider.runningBrowsers.isEmpty
+        let problem = browserRunning && !browserConnected && Date().timeIntervalSince(launchedAt) > 10
         if problem != chromeProblem { chromeProblem = problem }
 
         if pollCount % 4 == 0 && permissionStatus != .authorized {
@@ -207,8 +227,8 @@ final class MixerCore: ObservableObject {
     }
 
     private func pollNativeApps() {
-        let snapshot = monitor.snapshot()
-        let running = monitor.runningKeys()
+        let snapshot = native.snapshot()
+        let running = native.runningKeys()
 
         for (key, app) in snapshot {
             let id = "app:" + key
@@ -223,8 +243,8 @@ final class MixerCore: ObservableObject {
                 s.bundleIDs = app.bundleIDs
                 s.detail = detail
                 if s != sources[id] { sources[id] = s }
-                if engine.hasTap(id) {
-                    engine.ensureTap(id: id, processObjects: app.processObjects, gain: effectiveGain(s))
+                if native.isControlling(id) {
+                    native.control(id, processObjects: app.processObjects, gain: effectiveGain(s))
                 }
             } else if app.isRunningOutput || isHeld(id, host: "") {
                 var s = Source(
@@ -252,7 +272,7 @@ final class MixerCore: ObservableObject {
         for (id, s) in sources {
             switch s.kind {
             case .app:
-                values[id] = min(1, engine.level(id: id))
+                values[id] = min(1, native.level(id))
             case .tab:
                 values[id] = s.isAudible && !s.isMuted ? 0.45 + 0.2 * sin(t * 9) + 0.1 * sin(t * 23) : 0
             }
@@ -269,6 +289,12 @@ final class MixerCore: ObservableObject {
 
     private func addSource(_ source: Source) {
         var s = source
+        if settings.isMuteListed(listKeys(s)) {
+            sources[s.id] = s
+            listMuted.append(s.id)
+            silenceListed(s.id)
+            return
+        }
         if s.kind == .app && permissionStatus == .denied {
             s.permissionNeeded = true
             sources[s.id] = s
@@ -349,7 +375,7 @@ final class MixerCore: ObservableObject {
                 s.permissionNeeded = false
                 sources[id] = s
             }
-            engine.ensureTap(id: id, processObjects: s.processObjects, gain: effectiveGain(s))
+            native.control(id, processObjects: s.processObjects, gain: effectiveGain(s))
         }
     }
 
@@ -359,6 +385,10 @@ final class MixerCore: ObservableObject {
                 var updated = s
                 updated.permissionNeeded = false
                 sources[id] = updated
+                if listMuted.contains(id) {
+                    tapIfPossible(id) // now it can actually be silenced
+                    continue
+                }
                 manual.removeAll { $0 == id }
                 if let ch = firstFreeChannel() { place(id, on: ch) } else { waiting.append(id) }
             } else if channel(of: id) != nil {
@@ -371,7 +401,8 @@ final class MixerCore: ObservableObject {
         let ch = channel(of: id)
         waiting.removeAll { $0 == id }
         manual.removeAll { $0 == id }
-        engine.removeTap(id: id)
+        listMuted.removeAll { $0 == id }
+        native.release(id)
         pendingTabVolume.remove(id)
         sources[id] = nil
         if let ch {
@@ -455,7 +486,7 @@ final class MixerCore: ObservableObject {
     }
 
     func assign(_ id: String) {
-        guard sources[id] != nil, channel(of: id) == nil, let ch = firstFreeChannel(includingHeld: true) else { return }
+        guard sources[id] != nil, channel(of: id) == nil, !listMuted.contains(id), let ch = firstFreeChannel(includingHeld: true) else { return }
         if sources[id]?.permissionNeeded == true {
             AudioCapturePermission.openSystemSettings()
             return
@@ -465,7 +496,8 @@ final class MixerCore: ObservableObject {
 
     /// Drag and drop: move a source onto a channel, swapping with an occupant.
     func move(_ id: String, to ch: Int) {
-        guard ch >= firstSourceChannel, ch < MixerCore.channelCount, let s = sources[id], !s.permissionNeeded else { return }
+        guard ch >= firstSourceChannel, ch < MixerCore.channelCount, let s = sources[id], !s.permissionNeeded,
+              !listMuted.contains(id) else { return }
         let occupant = channels[ch]
         if occupant == id { return }
         if let from = channel(of: id) {
@@ -485,9 +517,23 @@ final class MixerCore: ObservableObject {
 
     func ignore(_ id: String) {
         guard let s = sources[id] else { return }
-        let key = s.kind == .app ? String(id.dropFirst(4)) : s.host
+        let key = primaryKey(s)
         if !key.isEmpty && !settings.ignoreList.contains(key) { settings.ignoreList.append(key) }
         removeSource(id)
+    }
+
+    /// Adds the source's app or website to the mute list; it leaves its channel and goes silent.
+    func alwaysMute(_ id: String) {
+        guard let s = sources[id] else { return }
+        let key = primaryKey(s)
+        if !key.isEmpty && !settings.muteList.contains(key) { settings.muteList.append(key) }
+    }
+
+    /// Takes the source's app or website off the mute list; it plays again and takes a channel.
+    func removeFromMuteList(_ id: String) {
+        guard let s = sources[id] else { return }
+        let keys = Set(listKeys(s))
+        settings.muteList.removeAll { keys.contains($0) }
     }
 
     func setVolumeFromUI(_ id: String, position: Float) {
@@ -510,41 +556,50 @@ final class MixerCore: ObservableObject {
     }
 
     func togglePlay(_ id: String) {
-        guard var s = sources[id], s.kind == .tab, let tabId = s.tabId else { return }
-        bridge.send(["type": "togglePlay", "tabId": tabId])
+        guard var s = sources[id], s.kind == .tab, let tabId = s.tabId, let conn = s.browserConnection else { return }
+        chrome.togglePlay(conn, tabId: tabId)
         if s.canPlayPause {
             s.isPlaying.toggle()
             sources[id] = s
         }
     }
 
+    /// Side Mute button: silences all media playback (what you hear).
     func toggleMuteAll() {
         muteAll.toggle()
         for id in channels.compactMap({ $0 }) { applyGainAndMute(id) }
-        osd("All", title: "Mute all", value: muteAll ? "On" : "Off")
+        osd("All", title: "All media", value: muteAll ? "Muted" : "Unmuted")
+    }
+
+    /// Side Solo button: silences the Mac's current microphone (what others hear from you).
+    func toggleMicrophone() {
+        let name = microphone.deviceName
+        switch microphone.toggle() {
+        case .muted:
+            micMuted = true
+            osd("Mic", title: "Microphone · \(name)", value: "Muted")
+        case .unmuted:
+            micMuted = false
+            osd("Mic", title: "Microphone · \(name)", value: "Unmuted")
+        case .unsupported:
+            osd("Mic", title: "Microphone · \(name)", value: "Can't be muted by apps")
+        }
     }
 
     func focus(_ id: String) {
         guard let s = sources[id] else { return }
         switch s.kind {
         case .app:
-            for pid in s.pids {
-                if let app = NSRunningApplication(processIdentifier: pid), app.activationPolicy == .regular {
-                    app.activate()
-                    return
-                }
-            }
+            native.focus(pids: s.pids)
         case .tab:
-            if let tabId = s.tabId {
-                bridge.send(["type": "focus", "tabId": tabId, "windowId": s.windowId ?? -1])
-                NSRunningApplication.runningApplications(withBundleIdentifier: "com.google.Chrome").first?.activate()
-            }
+            if let tabId = s.tabId, let conn = s.browserConnection { chrome.focus(conn, tabId: tabId, windowId: s.windowId) }
         }
     }
 
     // MARK: - Volume and mute plumbing
 
     private func effectiveGain(_ s: Source) -> Float {
+        if listMuted.contains(s.id) { return 0 }
         let mutedByAll = muteAll && channel(of: s.id) != nil
         return (s.isMuted || mutedByAll) ? 0 : s.volume
     }
@@ -555,7 +610,7 @@ final class MixerCore: ObservableObject {
         sources[id] = s
         settings.remember(volume: s.volume, for: s.rememberKey)
         switch s.kind {
-        case .app: engine.setGain(id: id, effectiveGain(s))
+        case .app: native.setGain(id, effectiveGain(s))
         case .tab: sendTabVolume(s)
         }
     }
@@ -563,56 +618,54 @@ final class MixerCore: ObservableObject {
     private func applyGainAndMute(_ id: String) {
         guard let s = sources[id] else { return }
         switch s.kind {
-        case .app: engine.setGain(id: id, effectiveGain(s))
+        case .app: native.setGain(id, effectiveGain(s))
         case .tab: sendTabMute(s)
         }
     }
 
     private func sendTabVolume(_ s: Source) {
-        guard let tabId = s.tabId else { return }
+        guard let tabId = s.tabId, let conn = s.browserConnection else { return }
         volumeSentAt[s.id] = Date()
-        bridge.send(["type": "setVolume", "tabId": tabId, "value": s.volume, "position": position(of: s)])
+        chrome.setVolume(conn, tabId: tabId, gain: s.volume, position: position(of: s))
     }
 
     private func sendTabMute(_ s: Source) {
-        guard let tabId = s.tabId else { return }
+        guard let tabId = s.tabId, let conn = s.browserConnection else { return }
         muteSentAt[s.id] = Date()
-        let muted = s.isMuted || (muteAll && channel(of: s.id) != nil)
-        bridge.send(["type": "setMute", "tabId": tabId, "muted": muted])
+        let muted = s.isMuted || (muteAll && channel(of: s.id) != nil) || listMuted.contains(s.id)
+        chrome.setMute(conn, tabId: tabId, muted: muted)
     }
 
     // MARK: - Controller
 
     private func controllerConnectionChanged(_ connected: Bool) {
+        // The driver initialises the device itself, then asks for the lights through onNeedsLights.
         controllerConnected = connected
-        lastLEDs.removeAll()
         detachAllFaders()
         for i in 0..<MixerCore.channelCount { faders[i].position = nil }
-        guard connected else { return }
-        midi.send(LCXL.selectFactoryTemplate1)
-        after(0.15) { [weak self] in
-            guard let self else { return }
-            self.midi.send(LCXL.resetLEDs)
-            self.midi.send(LCXL.enableFlashing)
-            self.lastLEDs.removeAll()
-            self.refreshLEDs()
-        }
     }
 
-    private func handle(_ event: ControllerEvent) {
-        switch event {
-        case let .fader(index, value):
-            faderMoved(index, position: Float(value) / 127)
-        case let .topButton(index, pressed):
-            if pressed { topPressed(index) }
-        case let .bottomButton(index, pressed):
-            bottomButton(index, pressed: pressed)
-        case let .sideMute(pressed):
-            if pressed { toggleMuteAll() }
-        case let .speedKnob(index, value):
-            speedKnob(index, position: Float(value) / 127)
-        case let .seekKnob(index, value):
-            seekKnob(index, position: Float(value) / 127)
+    private func handle(_ action: ControllerAction) {
+        switch action {
+        case let .fader(ch, p):
+            guard ch < MixerCore.channelCount else { return }
+            faderMoved(ch, position: p)
+        case let .playPause(ch):
+            guard ch < MixerCore.channelCount else { return }
+            topPressed(ch)
+        case let .muteButton(ch, pressed):
+            guard ch < MixerCore.channelCount else { return }
+            bottomButton(ch, pressed: pressed)
+        case .muteAll:
+            toggleMuteAll()
+        case .micMute:
+            toggleMicrophone()
+        case let .speedKnob(ch, p):
+            guard ch < MixerCore.channelCount else { return }
+            speedKnob(ch, position: p)
+        case let .seekKnob(ch, p):
+            guard ch < MixerCore.channelCount else { return }
+            seekKnob(ch, position: p)
         }
     }
 
@@ -654,7 +707,7 @@ final class MixerCore: ObservableObject {
 
     private func speedKnob(_ ch: Int, position p: Float) {
         guard !(masterActive && ch == 0), let s = source(onChannel: ch) else { return }
-        guard s.canSpeed, let tabId = s.tabId else {
+        guard s.canSpeed, let tabId = s.tabId, let conn = s.browserConnection else {
             notAvailable(ch, s, "Speed")
             return
         }
@@ -679,7 +732,7 @@ final class MixerCore: ObservableObject {
         updated.speed = speed
         sources[s.id] = updated
         speedSentAt[s.id] = Date()
-        bridge.send(["type": "setSpeed", "tabId": tabId, "rate": speed])
+        chrome.setSpeed(conn, tabId: tabId, rate: speed)
         osd("\(ch + 1)", title: s.displayName, value: "Speed \(speedLabel(speed))", source: s)
         scheduleRefresh()
     }
@@ -716,14 +769,14 @@ final class MixerCore: ObservableObject {
 
     private func seekTick(_ ch: Int) {
         let d = seekDeflection[ch]
-        guard d != 0, let s = source(onChannel: ch), s.canSeek, let tabId = s.tabId else {
+        guard d != 0, let s = source(onChannel: ch), s.canSeek, let tabId = s.tabId, let conn = s.browserConnection else {
             stopSeek(ch)
             return
         }
         let magnitude = abs(d)
         let step: Float = magnitude < 0.45 ? 5 : (magnitude < 0.8 ? 15 : 30)
         let seconds = d > 0 ? step : -step
-        bridge.send(["type": "seekBy", "tabId": tabId, "seconds": seconds])
+        chrome.seekBy(conn, tabId: tabId, seconds: seconds)
         osd("\(ch + 1)", title: s.displayName, value: d > 0 ? "⏩ +\(Int(step)) s" : "⏪ −\(Int(step)) s", source: s)
     }
 
@@ -779,7 +832,7 @@ final class MixerCore: ObservableObject {
         if s.isTwitch, let last = lastTopPress[ch], now.timeIntervalSince(last) < 0.4 {
             lastTopPress[ch] = nil
             togglePlay(s.id)
-            if let tabId = s.tabId { bridge.send(["type": "jumpLive", "tabId": tabId]) }
+            if let tabId = s.tabId, let conn = s.browserConnection { chrome.jumpLive(conn, tabId: tabId) }
             osd("\(ch + 1)", title: s.displayName, value: "Jump to live", source: s)
             return
         }
@@ -833,51 +886,40 @@ final class MixerCore: ObservableObject {
         }
     }
 
+    /// Works out what every light should show and hands it to the controller driver.
     private func refreshLEDs() {
         guard controllerConnected else { return }
         let now = Date()
-        var desired: [(UInt8, LCXL.Color)] = []
-        var knobs: [(UInt8, LCXL.Color)] = []
+        var lights = ControllerLights(channels: [])
         for ch in 0..<MixerCore.channelCount {
-            var top = LCXL.Color.off
-            var bottom = LCXL.Color.off
-            var speedLED = LCXL.Color.off
-            var seekLED = LCXL.Color.off
+            var c = ChannelLights()
             if !(masterActive && ch == 0), let s = source(onChannel: ch) {
                 if s.canSpeed {
-                    if s.speed > 1.001 { speedLED = .green } else if s.speed < 0.999 { speedLED = .red }
+                    if s.speed > 1.001 { c.speedKnob = .green } else if s.speed < 0.999 { c.speedKnob = .red }
                 }
                 if s.canSeek && seekTimers[ch] != nil {
-                    seekLED = seekDeflection[ch] > 0 ? .green : .red
+                    c.seekKnob = seekDeflection[ch] > 0 ? .green : .red
                 }
-            }
-            knobs.append((UInt8(8 + ch), seekLED))
-            knobs.append((UInt8(16 + ch), speedLED))
-            if !(masterActive && ch == 0), let s = source(onChannel: ch) {
                 if s.kind == .tab {
-                    top = unmutedStatus(of: s) == .playing ? .green : .amber
+                    c.playButton = unmutedStatus(of: s) == .playing ? .green : .amber
+                } else {
+                    // Native apps have no play/pause; dim green says "in use" without promising one.
+                    c.playButton = .greenDim
                 }
-                if let until = blinkUntil[ch], until > now { top = .greenFlash }
+                if let until = blinkUntil[ch], until > now { c.playButton = .greenBlink }
                 if muteAll {
-                    bottom = .redFlash
+                    c.muteButton = .redBlink
                 } else if s.isMuted {
-                    bottom = .red
+                    c.muteButton = .red
                 } else if s.kind == .tab && !s.canSetVolume {
-                    bottom = .redLow
+                    c.muteButton = .redDim
                 }
             }
-            desired.append((LCXL.topButtonNotes[ch], top))
-            desired.append((LCXL.bottomButtonNotes[ch], bottom))
+            lights.channels.append(c)
         }
-        desired.append((LCXL.muteNote, muteAll ? .yellow : .off))
-        for (note, color) in desired where lastLEDs[Int(note)] != color.rawValue {
-            midi.send(LCXL.led(note: note, color))
-            lastLEDs[Int(note)] = color.rawValue
-        }
-        for (index, color) in knobs where lastLEDs[1000 + Int(index)] != color.rawValue {
-            midi.send(LCXL.knobLED(index: index, color))
-            lastLEDs[1000 + Int(index)] = color.rawValue
-        }
+        lights.muteAll = muteAll ? .yellow : .off
+        lights.micMute = micMuted ? .red : .off
+        controller.show(lights)
     }
 
     // MARK: - Output device and master mode
@@ -902,72 +944,129 @@ final class MixerCore: ObservableObject {
     }
 
     private func applyIgnoreList() {
-        for (id, s) in sources {
-            let keys = s.kind == .app ? [String(id.dropFirst(4))] + s.bundleIDs : [s.host]
-            if settings.isIgnored(keys) { removeSource(id) }
-        }
-    }
-
-    // MARK: - Chrome
-
-    private func bridgeConnectionChanged(_ connected: Bool) {
-        chromeConnected = connected
-        chromeGrace?.cancel()
-        chromeGrace = nil
-        if connected {
-            chromeProblem = false
-            bridge.send(["type": "requestSnapshot"])
-        } else {
-            let work = DispatchWorkItem { [weak self] in
-                MainActor.assumeIsolated {
-                    guard let self, !self.chromeConnected else { return }
-                    for (id, s) in self.sources where s.kind == .tab { self.removeSource(id) }
-                }
+        for (id, s) in sources where settings.isIgnored(listKeys(s)) {
+            // Moved here from the mute list: give the sound back before letting go of it.
+            if listMuted.contains(id) {
+                listMuted.removeAll { $0 == id }
+                if s.kind == .tab { sendTabMute(s) }
             }
-            chromeGrace = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 6, execute: work)
+            removeSource(id)
         }
     }
 
-    private func handleBridge(_ message: [String: Any]) {
-        guard let type = message["type"] as? String else { return }
-        if type == "tabs", let tabs = message["tabs"] as? [[String: Any]] {
-            let build = message["extensionBuild"] as? String ?? ""
-            let wrong = build.isEmpty || build == "__BUILD_ID__"
-            if wrong != wrongExtensionFolder { wrongExtensionFolder = wrong }
-            handleTabs(tabs)
+    // MARK: - Mute list
+
+    /// Keys a list entry can match: the app's group key and bundle IDs, or the tab's website.
+    private func listKeys(_ s: Source) -> [String] {
+        s.kind == .app ? [String(s.id.dropFirst(4))] + s.bundleIDs : [s.host]
+    }
+
+    /// The key written to a list when the user picks "Always ignore" or "Always mute".
+    private func primaryKey(_ s: Source) -> String {
+        s.kind == .app ? String(s.id.dropFirst(4)) : s.host
+    }
+
+    private func silenceListed(_ id: String) {
+        guard let s = sources[id] else { return }
+        switch s.kind {
+        case .app: tapIfPossible(id)   // gain 0 through the tap
+        case .tab: sendTabMute(s)      // Chrome's tab mute
         }
     }
 
-    private func handleTabs(_ tabs: [[String: Any]]) {
+    /// Applies a changed mute list to sources that are already playing.
+    private func applyMuteList() {
+        for (id, s) in sources where !settings.isIgnored(listKeys(s)) {
+            let listed = settings.isMuteListed(listKeys(s))
+            let muted = listMuted.contains(id)
+            if listed && !muted {
+                if let ch = channel(of: id) {
+                    channels[ch] = nil
+                    faders[ch].attached = false
+                }
+                waiting.removeAll { $0 == id }
+                manual.removeAll { $0 == id }
+                listMuted.append(id)
+                silenceListed(id)
+                osd("–", title: s.displayName, value: "Muted by list", icon: s.icon, duration: 3, source: s)
+            } else if !listed && muted {
+                listMuted.removeAll { $0 == id }
+                applyGainAndMute(id) // sound back first
+                if let ch = firstFreeChannel() { place(id, on: ch) } else { waiting.append(id) }
+            }
+        }
+        for ch in firstSourceChannel..<MixerCore.channelCount where channels[ch] == nil { fillFromWaiting(ch) }
+    }
+
+    // MARK: - Browsers
+
+    private func browsersChanged(_ connections: [BrowserConnection]) {
+        let before = Set(browserConnections.map(\.id))
+        browserConnections = connections.sorted { $0.id < $1.id }
+        browserConnected = !connections.isEmpty
+        if browserConnected { chromeProblem = false }
+        let wrong = connections.contains { !$0.extensionOK }
+        if wrong != wrongExtensionFolder { wrongExtensionFolder = wrong }
+
+        // A browser whose extension has connected is controlled tab by tab from now on, never as a whole app.
+        for c in connections {
+            guard let browser = c.browser, !settings.extensionBrowsers.contains(browser.bundleID) else { continue }
+            settings.extensionBrowsers.append(browser.bundleID)
+            for (id, s) in sources where s.kind == .app && s.bundleIDs.contains(where: { Browsers.info(forBundleID: $0) == browser }) {
+                removeSource(id)
+            }
+        }
+
+        // Tabs of a closed connection leave after a grace period, unless a reconnect reports them again.
+        let gone = before.subtracting(connections.map(\.id))
+        for connection in gone {
+            after(6) { [weak self] in
+                guard let self else { return }
+                for (id, s) in self.sources where s.kind == .tab && s.browserConnection == connection {
+                    self.removeSource(id)
+                }
+                self.updateBrowserLabels()
+            }
+        }
+    }
+
+    /// Tabs show their browser's name only while tabs from more than one browser are in the mixer.
+    private func updateBrowserLabels() {
+        let keys = Set(sources.values.filter { $0.kind == .tab }.map(\.browserKey))
+        let several = keys.count > 1
+        for (id, s) in sources where s.kind == .tab {
+            let label = several ? (Browsers.info(forBundleID: s.browserKey)?.name ?? "Browser") : nil
+            if s.browserLabel != label {
+                var updated = s
+                updated.browserLabel = label
+                sources[id] = updated
+            }
+        }
+    }
+
+    /// Merges one browser connection's tab list into the mixer's sources.
+    private func handleTabs(_ tabs: [TabReport], from connection: BrowserConnection) {
         var seen = Set<String>()
         let now = Date()
         for t in tabs {
-            guard let tabId = (t["id"] as? NSNumber)?.intValue else { continue }
-            let id = "tab:\(tabId)"
-            let url = t["url"] as? String ?? ""
-            let host = URL(string: url)?.host ?? ""
-            let title = t["title"] as? String ?? ""
-            let audible = t["audible"] as? Bool ?? false
-            let muted = t["muted"] as? Bool ?? false
-            let hasMedia = t["hasMedia"] as? Bool ?? false
-            let playing = t["playing"] as? Bool ?? false
-            let canVolume = t["canVolume"] as? Bool ?? false
-            let canSpeed = t["canSpeed"] as? Bool ?? false
-            let canSeek = t["canSeek"] as? Bool ?? false
-            let speed = (t["speed"] as? NSNumber)?.floatValue
-            let volumeIsPosition = t["volumeIsPosition"] as? Bool ?? false
-            let reported = (t["volume"] as? NSNumber)?.floatValue
+            let tabId = t.tabId
+            // Tab numbers are only unique within one browser, so the browser is part of the ID.
+            let id = "tab:\(connection.key):\(tabId)"
+            let host = t.host
+            let title = t.title
+            let audible = t.audible
+            let muted = t.muted
+            let hasMedia = t.hasMedia
+            let playing = t.playing
+            let canVolume = t.canVolume
+            let canSpeed = t.canSpeed
+            let canSeek = t.canSeek
+            let speed = t.speed
             // Spotify reports its slider position; convert it to gain with the app's curve.
-            let volume = reported.map { volumeIsPosition ? settings.gain(forPosition: $0) : $0 }
-            let favicon = t["favIconUrl"] as? String ?? ""
-            let windowId = (t["windowId"] as? NSNumber)?.intValue
-            var windowBounds: CGRect?
-            if let b = t["windowBounds"] as? [String: Any],
-               let l = (b["left"] as? NSNumber)?.doubleValue, let tp = (b["top"] as? NSNumber)?.doubleValue,
-               let w = (b["width"] as? NSNumber)?.doubleValue, let h = (b["height"] as? NSNumber)?.doubleValue {
-                windowBounds = CGRect(x: l, y: tp, width: w, height: h)
-            }
+            let volume = t.reportedVolume.map { t.volumeIsPosition ? settings.gain(forPosition: $0) : $0 }
+            let favicon = t.favicon
+            let windowId = t.windowId
+            let windowBounds = t.windowBounds
 
             if sources[id] == nil {
                 // A paused tab that held a channel before the restart takes it back too.
@@ -981,6 +1080,8 @@ final class MixerCore: ObservableObject {
                 )
                 s.tabId = tabId
                 s.windowId = windowId
+                s.browserConnection = connection.id
+                s.browserKey = connection.key
                 s.windowBounds = windowBounds
                 s.canSpeed = canSpeed
                 s.canSeek = canSeek
@@ -1005,6 +1106,7 @@ final class MixerCore: ObservableObject {
             s.canPlayPause = hasMedia
             s.canSetVolume = canVolume
             s.windowId = windowId
+            s.browserConnection = connection.id
             if let windowBounds { s.windowBounds = windowBounds }
             s.canSpeed = canSpeed
             s.canSeek = canSeek
@@ -1013,7 +1115,7 @@ final class MixerCore: ObservableObject {
                 if let ch = channel(of: id) { speedAttached[ch] = false }
             }
             let onChannel = channel(of: id) != nil
-            if now.timeIntervalSince(muteSentAt[id] ?? .distantPast) > 1.0 && !(muteAll && onChannel) {
+            if now.timeIntervalSince(muteSentAt[id] ?? .distantPast) > 1.0 && !(muteAll && onChannel) && !listMuted.contains(id) {
                 s.isMuted = muted
             }
             if canVolume, pendingTabVolume.contains(id) {
@@ -1030,9 +1132,10 @@ final class MixerCore: ObservableObject {
             }
             if s != sources[id] { sources[id] = s }
         }
-        for (id, s) in sources where s.kind == .tab && !seen.contains(id) {
+        for (id, s) in sources where s.kind == .tab && s.browserConnection == connection.id && !seen.contains(id) {
             removeSource(id)
         }
+        updateBrowserLabels()
     }
 
     private func setIcon(_ id: String, _ image: NSImage) {

@@ -14,15 +14,18 @@ struct PanelView: View {
                     .font(.caption).foregroundStyle(core.controllerConnected ? Color.secondary : Color.red)
                 Spacer()
                 if core.muteAll {
-                    Label("Mute all", systemImage: "speaker.slash.fill").font(.caption).foregroundStyle(.red)
+                    Label("Media muted", systemImage: "speaker.slash.fill").font(.caption).foregroundStyle(.red)
+                }
+                if core.micMuted {
+                    Label("Mic muted", systemImage: "mic.slash.fill").font(.caption).foregroundStyle(.red)
                 }
             }
 
-            if core.wrongExtensionFolder && core.chromeConnected {
+            if core.wrongExtensionFolder && core.browserConnected {
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([AppPaths.extensionFolder])
                 } label: {
-                    Label("Chrome extension loaded from the wrong folder", systemImage: "exclamationmark.triangle.fill")
+                    Label("Browser extension loaded from the wrong folder", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                 }
                 .buttonStyle(.link)

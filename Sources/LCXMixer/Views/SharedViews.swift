@@ -110,27 +110,30 @@ struct HeaderStatus: View {
             .foregroundStyle(core.controllerConnected ? Color.secondary : Color.red)
 
             if core.muteAll {
-                Label("Mute all on", systemImage: "speaker.slash.fill").foregroundStyle(.red)
+                Label("All media muted", systemImage: "speaker.slash.fill").foregroundStyle(.red)
+            }
+            if core.micMuted {
+                Label("Microphone muted", systemImage: "mic.slash.fill").foregroundStyle(.red)
             }
             if core.chromeProblem {
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([AppPaths.extensionFolder])
                 } label: {
-                    Label("Chrome extension not connected", systemImage: "exclamationmark.triangle.fill")
+                    Label("Browser extension not connected", systemImage: "exclamationmark.triangle.fill")
                 }
                 .buttonStyle(.link)
                 .foregroundStyle(.orange)
-                .help("Load the extension from this folder in chrome://extensions → Developer mode → Load unpacked")
+                .help("Load the extension from this folder: open the browser's extensions page, turn on Developer mode, choose Load unpacked")
             }
-            if core.wrongExtensionFolder && core.chromeConnected {
+            if core.wrongExtensionFolder && core.browserConnected {
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([AppPaths.extensionFolder])
                 } label: {
-                    Label("Chrome is using an outdated extension folder", systemImage: "exclamationmark.triangle.fill")
+                    Label("A browser is using an outdated extension folder", systemImage: "exclamationmark.triangle.fill")
                 }
                 .buttonStyle(.link)
                 .foregroundStyle(.orange)
-                .help("In chrome://extensions remove LCX Mixer, then Load unpacked from this folder so it updates itself")
+                .help("On the browser's extensions page remove LCX Mixer, then Load unpacked from this folder so it updates itself")
             }
             if core.permissionStatus == .denied {
                 Button {
