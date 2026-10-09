@@ -12,9 +12,10 @@ struct ActivityRain: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var rain = RainField()
+    @State private var visible = false
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !active)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !active || !visible)) { timeline in
             Canvas { context, size in
                 let drops = active ? rain.drops(at: timeline.date, active: true, calm: reduceMotion) : []
                 let length = axis == .vertical ? size.height : size.width
@@ -52,6 +53,7 @@ struct ActivityRain: View {
             }
         }
         .clipShape(Capsule())
+        .background(WindowVisibilityProbe(visible: $visible))
         .accessibilityLabel(active ? "Playing" : "Silent")
     }
 }

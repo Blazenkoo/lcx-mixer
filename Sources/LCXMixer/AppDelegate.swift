@@ -46,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         core.start()
         updateStatusIcon()
         observeMuteAll()
+        observeMeterVisibility()
         dockObservation = settings.$alwaysInDock.sink { [weak self] _ in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.updateDockPresence() } }
         }
@@ -220,11 +221,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func showWelcome() {
         popover.performClose(nil)
         if welcomeWindow == nil {
-            welcomeWindow = RoundedWindow(content: ScaledRoot(settings: settings) {
+            let window = RoundedWindow(content: ScaledRoot(settings: settings) {
                 WelcomeView(core: core,
                             openSettings: { [weak self] in self?.showSettings() },
                             close: { [weak self] in self?.welcomeWindow?.close() })
             })
+            // Closed means gone: nothing of it keeps running in the background.
+            window.onClose = { [weak self, weak window] in if let window { self?.release(window) } }
+            welcomeWindow = window
         }
         present(welcomeWindow)
     }
@@ -232,13 +236,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func showAbout() {
         popover.performClose(nil)
         if aboutWindow == nil {
-            aboutWindow = RoundedWindow(content: ScaledRoot(settings: settings) {
+            let window = RoundedWindow(content: ScaledRoot(settings: settings) {
                 AboutView(core: core,
                           showSetup: { [weak self] in self?.aboutWindow?.close(); self?.showWelcome() },
                           close: { [weak self] in self?.aboutWindow?.close() })
             })
+            window.onClose = { [weak self, weak window] in if let window { self?.release(window) } }
+            aboutWindow = window
         }
         present(aboutWindow)
+    }
+
+    /// Lets go of a closed rounded window and its content, after the close has finished.
+    private func release(_ window: RoundedWindow) {
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                window.contentViewController = nil
+                if self?.welcomeWindow === window { self?.welcomeWindow = nil }
+                if self?.aboutWindow === window { self?.aboutWindow = nil }
+            }
+        }
+    }
+
+    // MARK: - Meters only while visible
+
+    private var visibilityObservers: [NSObjectProtocol] = []
+
+    /// Level meters are only worth updating while the mixer window or the menu-bar panel is on screen.
+    private func observeMeterVisibility() {
+        let center = NotificationCenter.default
+        let update: @Sendable (Notification) -> Void = { [weak self] _ in
+            Task { @MainActor in self?.updateMetersWanted() }
+        }
+        for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.willCloseNotification,
+                     NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification] {
+            visibilityObservers.append(center.addObserver(forName: name, object: nil, queue: .main, using: update))
+        }
+        for name in [NSPopover.didShowNotification, NSPopover.didCloseNotification] {
+            visibilityObservers.append(center.addObserver(forName: name, object: popover, queue: .main, using: update))
+        }
+        updateMetersWanted()
+    }
+
+    private func updateMetersWanted() {
+        let mixerVisible = mixerWindow.map { $0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible) } ?? false
+        core.metersWanted = mixerVisible || popover.isShown
     }
 
     private func present(_ window: RoundedWindow?) {

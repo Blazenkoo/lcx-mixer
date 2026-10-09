@@ -27,6 +27,12 @@ private let responsibleForPid: ResponsibleFn? = {
 final class AudioProcessMonitor {
     private let settings: AppSettings
     private var ownerCache: [pid_t: NSRunningApplication?] = [:]
+    /// Facts that never change for a running process, looked up once instead of on every poll.
+    /// Asking macOS for an app's bundle ID or name is a round trip to another process each time.
+    private var bundleIDCache: [pid_t: String] = [:]
+    private var nameCache: [pid_t: String] = [:]
+    private var iconCache: [pid_t: NSImage] = [:]
+    private var processInfoCache: [AudioObjectID: (pid: pid_t, bundle: String)] = [:]
     private let ownPID = ProcessInfo.processInfo.processIdentifier
 
     init(settings: AppSettings) { self.settings = settings }
@@ -43,24 +49,68 @@ final class AudioProcessMonitor {
     /// Group keys of all running apps (used to tell whether a source's app has quit).
     func runningKeys() -> Set<String> {
         var keys = Set<String>()
+        var live = Set<pid_t>()
         for app in NSWorkspace.shared.runningApplications {
-            if let id = app.bundleIdentifier { keys.insert(group(for: id).key) }
+            let pid = app.processIdentifier
+            live.insert(pid)
+            let id: String
+            if let cached = bundleIDCache[pid] {
+                id = cached
+            } else {
+                id = app.bundleIdentifier ?? ""
+                bundleIDCache[pid] = id
+            }
+            if !id.isEmpty { keys.insert(group(for: id).key) }
         }
+        bundleIDCache = bundleIDCache.filter { live.contains($0.key) }
         return keys
+    }
+
+    private func bundleID(of app: NSRunningApplication) -> String? {
+        let pid = app.processIdentifier
+        if let cached = bundleIDCache[pid] { return cached.isEmpty ? nil : cached }
+        let id = app.bundleIdentifier
+        bundleIDCache[pid] = id ?? ""
+        return id
+    }
+
+    private func icon(of app: NSRunningApplication) -> NSImage? {
+        let pid = app.processIdentifier
+        if let cached = iconCache[pid] { return cached }
+        let icon = app.icon
+        if let icon { iconCache[pid] = icon }
+        return icon
+    }
+
+    private func name(of app: NSRunningApplication, fallback: String) -> String {
+        let pid = app.processIdentifier
+        if let cached = nameCache[pid] { return cached }
+        let name = app.localizedName ?? fallback
+        nameCache[pid] = name
+        return name
     }
 
     func snapshot() -> [String: NativeAppSnapshot] {
         var result: [String: NativeAppSnapshot] = [:]
         var livePIDs = Set<pid_t>()
 
-        for object in CA.objectIDs(CA.system, kAudioHardwarePropertyProcessObjectList) {
-            let pid: pid_t = CA.get(object, kAudioProcessPropertyPID, default: -1)
+        let objects = CA.objectIDs(CA.system, kAudioHardwarePropertyProcessObjectList)
+        for object in objects {
+            // A process object's PID and bundle never change: read them once. Only "is it playing" is live.
+            let info: (pid: pid_t, bundle: String)
+            if let cached = processInfoCache[object] {
+                info = cached
+            } else {
+                info = (CA.get(object, kAudioProcessPropertyPID, default: -1), CA.string(object, kAudioProcessPropertyBundleID) ?? "")
+                processInfoCache[object] = info
+            }
+            let pid = info.pid
             guard pid > 0, pid != ownPID else { continue }
             livePIDs.insert(pid)
             let running: UInt32 = CA.get(object, kAudioProcessPropertyIsRunningOutput, default: 0)
-            let processBundle = CA.string(object, kAudioProcessPropertyBundleID) ?? ""
+            let processBundle = info.bundle
 
-            guard let owner = owningApp(for: pid), let ownerBundle = owner.bundleIdentifier else { continue }
+            guard let owner = owningApp(for: pid), let ownerBundle = bundleID(of: owner) else { continue }
             // Browsers controlled tab by tab through the extension are never also a native source.
             if ownerBundle == AppPaths.bundleID || settings.isPerTabBrowser(ownerBundle) || settings.isPerTabBrowser(processBundle) {
                 continue
@@ -68,11 +118,11 @@ final class AudioProcessMonitor {
             let (key, groupName) = group(for: ownerBundle)
             if settings.isIgnored([key, ownerBundle, processBundle]) { continue }
 
-            let appName = owner.localizedName ?? ownerBundle
+            let appName = name(of: owner, fallback: ownerBundle)
             var entry = result[key] ?? NativeAppSnapshot(
                 key: key,
                 name: groupName ?? appName,
-                icon: owner.icon,
+                icon: icon(of: owner),
                 processObjects: [],
                 bundleIDs: [],
                 pids: [],
@@ -83,12 +133,17 @@ final class AudioProcessMonitor {
             if !entry.bundleIDs.contains(ownerBundle) { entry.bundleIDs.append(ownerBundle) }
             if !entry.pids.contains(owner.processIdentifier) { entry.pids.append(owner.processIdentifier) }
             if !entry.memberNames.contains(appName) { entry.memberNames.append(appName) }
-            if entry.icon == nil { entry.icon = owner.icon }
+            if entry.icon == nil { entry.icon = icon(of: owner) }
             entry.isRunningOutput = entry.isRunningOutput || running != 0
             result[key] = entry
         }
 
         ownerCache = ownerCache.filter { livePIDs.contains($0.key) }
+        let liveObjects = Set(objects)
+        processInfoCache = processInfoCache.filter { liveObjects.contains($0.key) }
+        let owners = Set(ownerCache.values.compactMap { $0?.processIdentifier })
+        nameCache = nameCache.filter { owners.contains($0.key) }
+        iconCache = iconCache.filter { owners.contains($0.key) }
         return result
     }
 

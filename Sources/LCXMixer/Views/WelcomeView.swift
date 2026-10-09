@@ -27,6 +27,14 @@ final class RoundedWindow: NSWindow {
         contentViewController = host
     }
 
+    /// Called after closing, so the owner can let go of the window and everything in it.
+    var onClose: (() -> Void)?
+
+    override func close() {
+        super.close()
+        onClose?()
+    }
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
     /// Esc closes it, like a sheet.
@@ -94,10 +102,14 @@ struct WelcomeView: View {
     let close: () -> Void
     @Environment(\.uiScale) private var scale
 
+    /// Collected once when shown, not on every redraw.
+    @State private var icons: [NSImage] = []
+
     var body: some View {
         RoundedPanel(close: close) {
             VStack(spacing: 0) {
-                TowerVisual(icons: TowerIcons.collect(from: core))
+                TowerVisual(icons: icons)
+                    .onAppear { icons = TowerIcons.collect(from: core) }
                     .frame(width: 520, height: 300)
                     .overlay(WindowDragArea())
 
@@ -183,10 +195,14 @@ struct AboutView: View {
     let close: () -> Void
     @Environment(\.uiScale) private var scale
 
+    /// Collected once when shown, not on every redraw.
+    @State private var icons: [NSImage] = []
+
     var body: some View {
         RoundedPanel(close: close) {
             VStack(spacing: 0) {
-                TowerVisual(icons: TowerIcons.collect(from: core))
+                TowerVisual(icons: icons)
+                    .onAppear { icons = TowerIcons.collect(from: core) }
                     .frame(width: 520, height: 300)
                     .overlay(WindowDragArea())
                 VStack(spacing: 6 * scale) {
@@ -213,10 +229,14 @@ struct SettingsCredits: View {
     let openAbout: () -> Void
     @Environment(\.uiScale) private var scale
 
+    /// Collected once when shown, not on every redraw.
+    @State private var icons: [NSImage] = []
+
     var body: some View {
         HStack(alignment: .center, spacing: 14 * scale) {
             Button(action: openAbout) {
-                TowerVisual(icons: TowerIcons.collect(from: core), showsTitle: false)
+                TowerVisual(icons: icons, showsTitle: false, fps: 30)
+                    .onAppear { icons = TowerIcons.collect(from: core) }
                     .frame(width: 132 * scale, height: 88 * scale)
                     .clipShape(RoundedRectangle(cornerRadius: 12 * scale, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 12 * scale, style: .continuous)

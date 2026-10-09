@@ -277,7 +277,14 @@ final class MixerCore: ObservableObject {
         }
     }
 
+    /// Set by the app: true while a window or panel showing meters is on screen.
+    var metersWanted = false {
+        didSet { if !metersWanted && !levels.values.isEmpty { levels.values = [:] } }
+    }
+
     private func updateLevels() {
+        // Nobody can see the meters: skip the work (and the redraws it would cause in hidden windows).
+        guard metersWanted else { return }
         var values: [String: Float] = [:]
         for (id, s) in sources {
             switch s.kind {

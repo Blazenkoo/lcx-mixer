@@ -8,14 +8,18 @@ struct TowerVisual: View {
     /// Icons of apps and websites on this Mac, shown in one grey tone on the liveliest tiles.
     var icons: [NSImage] = []
     var showsTitle = true
+    /// Frames per second while visible; the small Settings thumbnail needs fewer.
+    var fps: Double = 60
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var scheme
     @State private var field = TowerField()
+    @State private var visible = false
 
     var body: some View {
         let palette = TowerPalette(dark: scheme == .dark)
-        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: reduceMotion)) { timeline in
+        // Drawn only while its window can be seen; closed or hidden windows cost nothing.
+        TimelineView(.animation(minimumInterval: 1.0 / fps, paused: reduceMotion || !visible)) { timeline in
             Canvas { context, size in
                 let levels = reduceMotion ? field.stillLevels : field.levels(at: timeline.date)
                 TowerRenderer(field: field, levels: levels, palette: palette, icons: icons, showsTitle: showsTitle)
@@ -45,25 +49,48 @@ struct TowerVisual: View {
             }
         }
         .background(palette.background)
+        .background(WindowVisibilityProbe(visible: $visible))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("LCX Mixer: tiles rising and falling like level meters")
     }
 }
 
 /// Collects the icons for the visual: what's playing first, then other open apps. Local only.
+/// Each icon is turned into a small grey bitmap once and kept, keyed by its app or source, so
+/// nothing is converted or filtered while the visual animates.
 @MainActor
 enum TowerIcons {
+    private static var cache: [String: NSImage] = [:]
+
     static func collect(from core: MixerCore, limit: Int = 10) -> [NSImage] {
-        var icons: [NSImage] = core.sources.values
+        var picked: [(key: String, image: NSImage)] = core.sources.values
             .sorted { $0.displayName < $1.displayName }
-            .compactMap(\.icon)
+            .compactMap { s in s.icon.map { ("source:" + s.rememberKey, $0) } }
         let own = Bundle.main.bundleIdentifier
-        let apps = NSWorkspace.shared.runningApplications
-            .filter { $0.activationPolicy == .regular && $0.bundleIdentifier != own }
-            .sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }
-            .compactMap(\.icon)
-        icons += apps
-        return Array(icons.prefix(limit))
+        for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
+            guard picked.count < limit, let id = app.bundleIdentifier, id != own else { continue }
+            let key = "app:" + id
+            // Only ask for the icon when it isn't grey-cached yet: each request makes a new image.
+            if let cached = cache[key] { picked.append((key, cached)) } else if let icon = app.icon { picked.append((key, icon)) }
+        }
+        return picked.prefix(limit).map { grey($0.image, key: $0.key) }
+    }
+
+    private static func grey(_ image: NSImage, key: String) -> NSImage {
+        if let cached = cache[key] { return cached }
+        let side = 64
+        guard let context = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceGray(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return image }
+        var rect = CGRect(x: 0, y: 0, width: side, height: side)
+        guard let source = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return image }
+        context.interpolationQuality = .high
+        context.draw(source, in: rect)   // drawing into a grey context makes it grey
+        guard let output = context.makeImage() else { return image }
+        let result = NSImage(cgImage: output, size: NSSize(width: side, height: side))
+        if cache.count > 64 { cache.removeAll() }
+        cache[key] = result
+        return result
     }
 }
 
@@ -262,11 +289,16 @@ private struct TowerRenderer {
             }
 
             if level > 0.45 {
-                // Tall towers glow softly around their sides.
-                context.drawLayer { glow in
-                    glow.addFilter(.shadow(color: colour.opacity(0.55), radius: 14 * k))
-                    glow.fill(leftFace, with: sideFill)
-                    glow.fill(rightFace, with: sideFill)
+                // Tall towers glow softly around their sides: wide, faint strokes of the outline behind
+                // the faces. Looks like a blur, without the cost of blurring every tower every frame.
+                let outline = Path { p in
+                    p.addLines([left, front, right, up(right), up(back), up(left)])
+                    p.closeSubpath()
+                }
+                let strength = (level - 0.45) / 0.55
+                for (width, opacity) in [(26.0, 0.07), (16.0, 0.1), (8.0, 0.14)] {
+                    context.stroke(outline, with: .color(colour.opacity(opacity * (0.5 + strength))),
+                                   style: StrokeStyle(lineWidth: width * k, lineJoin: .round))
                 }
             }
             if lit {
@@ -279,22 +311,25 @@ private struct TowerRenderer {
 
             context.fill(top, with: .color(palette.tileTop))
             if lit {
-                context.drawLayer { edge in
-                    if level > 0.25 { edge.addFilter(.shadow(color: colour.opacity(0.8), radius: 6 * k)) }
-                    edge.stroke(top, with: .color(colour.opacity(min(1, 0.35 + level))), lineWidth: 1.3 * k)
+                if level > 0.25 {
+                    // The top edge's halo, the same way: a wider faint stroke under the crisp one.
+                    context.stroke(top, with: .color(colour.opacity(0.22)), style: StrokeStyle(lineWidth: 6 * k, lineJoin: .round))
                 }
+                context.stroke(top, with: .color(colour.opacity(min(1, 0.35 + level))), lineWidth: 1.3 * k)
             }
 
             // The glyph lies flat on the top: upright, squashed by the tilt.
             guard tower.lively else { continue }
             let centre = CGPoint(x: (up(back).x + up(front).x) / 2, y: (up(back).y + up(front).y) / 2)
             let glyphSize = ux * 0.95
-            context.drawLayer { layer in
+            do {
+                // A copy of the context carries the transform without an offscreen layer.
+                var layer = context
                 layer.translateBy(x: centre.x, y: centre.y)
                 layer.scaleBy(x: 1, y: tan(theta) * 1.15)
                 let rect = CGRect(x: -glyphSize / 2, y: -glyphSize / 2, width: glyphSize, height: glyphSize)
                 if let n = iconFor[i] {
-                    layer.addFilter(.grayscale(1))
+                    // Icons arrive already grey (TowerIcons), so no filter runs per frame.
                     layer.opacity = 0.9
                     layer.clip(to: Path(roundedRect: rect.insetBy(dx: glyphSize * 0.06, dy: glyphSize * 0.06),
                                         cornerRadius: glyphSize * 0.22))
