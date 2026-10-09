@@ -2,7 +2,7 @@
 
 This is the product specification LCX Mixer was built from, kept up to date with what is built. For build and install steps, see the [README](../README.md).
 
-**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2.0 code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual · v2.0.1 performance: nothing draws while it can't be seen, lighter background checks · v2.1 event-driven: the app sleeps until something changes, and native apps at 100% play untouched.
+**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2.0 code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual · v2.0.1 performance: nothing draws while it can't be seen, lighter background checks · v2.1 event-driven: the app sleeps until something changes, and native apps at 100% play untouched · v2.1.1 crossfaded hand-over when a tap starts or ends.
 
 ## Contents
 
@@ -258,7 +258,7 @@ Native apps get volume and mute through the Mac app's audio engine. Browser tabs
 
 | Source | Volume | Play / pause | Speed and seek | Notes |
 | --- | --- | --- | --- | --- |
-| Native app (League, Discord, Music…) | Audio engine, only below 100% or muted | Not available | Not available | At 100% it plays untouched. Below, it passes through the app (a few milliseconds of delay); the change-over can make a tiny pop |
+| Native app (League, Discord, Music…) | Audio engine, only below 100% or muted | Not available | Not available | At 100% it plays untouched. Below, it passes through the app (a few milliseconds of delay); the change-over is a 20 ms crossfade |
 | YouTube | YouTube's player (its own slider follows) | Player's play/pause | Both | Ads play in the same player |
 | Spotify Web | Moves Spotify's own volume slider; Spotify applies its own loudness curve | Spotify's play/pause button | Seek through Spotify's progress bar; speed not available | |
 | Twitch live | Moves Twitch's own volume slider (falls back to the video element if Twitch renames it) | "Pause" silences the tab and keeps the stream live | Not available | Double-press play jumps to live |
@@ -397,7 +397,8 @@ A menu-bar utility should cost next to nothing while it sits in the background.
 - **Meters only when shown.** Level meters update only while the mixer window or the menu-bar panel is open.
 - **Cheap effects.** Tower glows are soft strokes rather than a per-frame blur; app icons are made grey once per app; the Settings thumbnail runs at 30 fps.
 - **Woken by changes, not timers.** Core Audio and macOS notify the app when an app starts or stops sound, quits, or the microphone's mute or the output volume changes. A check every 10 s remains only as a safety net. The meter timer runs only while meters are on screen.
-- **Tap only when needed.** A native app at 100% and unmuted plays untouched: no audio work and no purple dot. Its tap starts, with a short fade-in, when its volume goes below 100% or it's muted, and is released 2 s after it's back at 100%.
+- **Tap only when needed.** A native app at 100% and unmuted plays untouched: no audio work and no purple dot. Its tap starts when its volume goes below 100% or it's muted, and is released 2 s after it's back at 100%.
+- **Crossfaded hand-over.** A new tap starts with the app's own sound still playing; once ours flows, the original is muted and ours fades in over 20 ms. Releasing does the reverse. If macOS doesn't allow changing a running tap's mute, it switches straight over with a short fade instead.
 - **Audio on the device's own thread.** A tap's audio is processed directly on the output device's real-time thread (already in its audio workgroup), with no extra thread hop, no memory allocation and no locks; level measuring is off while no meter is visible.
 - **Quiet extension.** Tab scripts find players as they start instead of scanning every 2 s; the background worker checks in every 5 s.
 

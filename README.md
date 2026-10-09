@@ -102,7 +102,7 @@ LCX Mixer has **no network attack surface**: there is no server or web app, and 
 
 ## Known limitations
 
-- **Changing a native app's volume** from 100% (or back to it) can make a tiny pop or a split-second gap, as macOS hands the app's sound over to LCX Mixer (or back). It happens only at that moment, not while you adjust the volume.
+- **Changing a native app's volume** from 100% (or back to it) can sound slightly rough for a split second, as the app's sound crossfades over to LCX Mixer (or back). It happens only at that moment, not while you adjust the volume.
 - **Browser tab meters** show activity, not real levels: drops land on the bar and ripple outward. macOS can't separate the sound of individual tabs, so the tab meter is deliberately unlike a real one.
 - **Twitch live streams:** "pause" silences the tab and keeps the stream live. A background tab can't reliably resume a paused live stream.
 - **Spotify** applies its own loudness curve to its volume slider, so the bottom half of the fader is gentler than on other sources.

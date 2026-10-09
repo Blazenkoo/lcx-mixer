@@ -40,7 +40,7 @@ final class AudioEngine {
                 existing.gain = gain
                 return
             }
-            existing.stop()
+            existing.stopSeamlessly()
             taps[id] = nil
         }
         guard !objects.isEmpty else { return }
@@ -57,8 +57,9 @@ final class AudioEngine {
         taps[id]?.gain = gain
     }
 
+    /// Hands the app's sound back to it with a short crossfade, then removes the tap.
     func removeTap(id: String) {
-        taps[id]?.stop()
+        taps[id]?.stopSeamlessly()
         taps[id] = nil
     }
 
