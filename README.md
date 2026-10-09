@@ -22,6 +22,8 @@ https://github.com/user-attachments/assets/81d2e758-2983-4775-951c-c71e33042e1c
 - **Per-tab control:** Spotify, YouTube and Twitch in the same browser each get their own fader, in Chrome, Edge, Brave, Arc, Vivaldi or Chromium.
 - **Hands-free control:** volume on the faders, play/pause and mute on the buttons, all media muted on the side Mute button, and your microphone muted on Solo.
 - **Mute list:** apps and websites that should always stay silent, such as chat notifications, never take a channel.
+- **Other controllers:** the Launch Control XL mk2 works out of the box; any other MIDI controller can be set up by moving its faders and pressing its buttons (MIDI learn).
+- **Readable at any size:** four text sizes scale the mixer window, menu-bar panel, pop-up and Settings together.
 - **Clear feedback:** controller LEDs, a mixer window, a menu-bar panel and a short on-screen pop-up all show the same state.
 - **Fully local:** no account, no server, no network connections (see *Security*).
 
@@ -30,7 +32,7 @@ The full product specification, including assignment rules, LED colours and edge
 ## Requirements
 
 - macOS 14.2 or later (Apple silicon)
-- Novation Launch Control XL **mk2** (the app switches it to Factory Template 1 automatically)
+- Novation Launch Control XL **mk2** (the app switches it to Factory Template 1 automatically), or any other MIDI controller through MIDI learn
 - Google Chrome or another Chromium browser (Edge, Brave, Arc, Vivaldi, Chromium), for per-tab control
 - Xcode (free from the App Store), to build
 
@@ -68,13 +70,17 @@ In each browser you use, open its extensions page (`chrome://extensions`, `edge:
 
 **LED colours:** green = playing, amber = paused, dim green = a native app (no play/pause), red = muted, off = empty channel.
 
+**Another MIDI controller?** In Settings → Controller, choose **Any MIDI controller (MIDI learn)** and your device. Then click **Learn** next to each function (a channel's volume, play/pause or mute, Mute all media, Microphone mute) and move the fader or press the button you want for it. A control does one thing at a time: learning it for a new function takes it off the old one.
+
 ## On screen
 
-The **mixer window** (shown at the top) lays the 8 channels out in the same order as the controller's columns. Sources that are playing without a channel wait in **Unassigned Audio Sources** below, where you can assign them or drag them onto a channel.
+The **mixer window** (shown at the top) opens whenever you start the app yourself; at login, the app starts quietly in the menu bar. It lays the 8 channels out in the same order as the controller's columns. Sources that are playing without a channel wait in **Unassigned Audio Sources** below, where you can assign them or drag them onto a channel.
 
 The **menu-bar panel** shows the same channels as compact rows, one click away:
 
 <img src="docs/images/menu-bar-panel.png" width="402" alt="The menu-bar panel listing the same four channels as rows, with status dots, volume percentages, and an Assign button for App Store">
+
+**Text size** (Settings → General, or ⌘− / ⌘+ / ⌘0 in the mixer window and Settings) scales everything together; the windows resize to fit.
 
 Touching any control shows a short **pop-up** on the screen where that source is playing, so you can mix without opening anything:
 
@@ -97,6 +103,7 @@ LCX Mixer has **no network attack surface**: there is no server or web app, and 
 - **Spotify** applies its own loudness curve to its volume slider, so the bottom half of the fader is gentler than on other sources.
 - **Microphone mute:** some audio interfaces, such as the Focusrite Scarlett range, don't let apps mute their inputs. The pop-up says so when you press Solo.
 - **Side button lights** (Mute, Solo) on the Launch Control XL mk2 are yellow only.
+- **MIDI learn** covers volume, play/pause, mute, Mute all media and Microphone mute. It has no light feedback, since every controller lights its buttons differently, and the speed and seek knobs are only on the Launch Control XL.
 - To check the audio permission and to identify which app a background audio process belongs to, the app uses two undocumented macOS functions. Future macOS versions could change them.
 
 ## How it was made

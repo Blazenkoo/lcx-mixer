@@ -2,7 +2,7 @@
 
 This is the product specification LCX Mixer was built from, kept up to date with what is built. For build and install steps, see the [README](../README.md).
 
-**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2 (in progress) code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps.
+**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2 (in progress) code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch.
 
 ## Contents
 
@@ -12,6 +12,7 @@ This is the product specification LCX Mixer was built from, kept up to date with
 - [Unassigned sources, the mute list and the ignore list](#unassigned-sources-the-mute-list-and-the-ignore-list)
 - [Control mapping](#control-mapping)
 - [Knobs](#knobs)
+- [Other controllers (MIDI learn)](#other-controllers-midi-learn)
 - [Mixer window](#mixer-window)
 - [Menu-bar icon, panel and on-screen pop-up](#menu-bar-icon-panel-and-on-screen-pop-up)
 - [Per-source behaviour](#per-source-behaviour)
@@ -38,7 +39,7 @@ A small macOS menu-bar app, paired with a browser extension, turns the Launch Co
 **Non-goals for v1**
 
 - Safari and Firefox tabs (each browser appears as one whole app). Chromium browsers are supported tab by tab from v2.
-- Controllers other than the Launch Control XL mk2 (planned for v2 through MIDI learn and Mackie Control).
+- Controllers other than the Launch Control XL mk2. From v2, any MIDI controller works through MIDI learn; Mackie Control is planned.
 - Prebuilt or notarised downloads. It's shared as source code that people build themselves.
 
 ## Architecture
@@ -54,7 +55,7 @@ flowchart LR
 
     subgraph APP["LCX Mixer (macOS app)"]
         direction TB
-        DRIVER["Controller driver<br/>(Launch Control XL)"]
+        DRIVER["Controller driver<br/>(Launch Control XL or MIDI learn)"]
         NATIVEP["Native-app provider"]
         BROWSERP["Browser provider"]
         CORE["Mixer core<br/>single source of truth"]
@@ -77,7 +78,7 @@ The controller and native apps connect straight to the Mac app; browser tabs are
 
 **Mac app (Swift, SwiftUI)**
 
-1. **Controller driver.** Everything specific to one device. The Launch Control XL driver talks Core MIDI: it turns faders, knobs and buttons into device-independent actions, shows the mixer's requested lights in the colours the hardware has, and reconnects on its own when replugged.
+1. **Controller driver.** Everything specific to one device. The Launch Control XL driver talks Core MIDI: it turns faders, knobs and buttons into device-independent actions, shows the mixer's requested lights in the colours the hardware has, and reconnects on its own when replugged. The MIDI-learn driver does the same for any other MIDI controller, using the assignments you teach it, without lights.
 2. **Native-app provider.** Finds which apps are producing sound, traces helper processes back to the app you'd recognise, and applies grouping. For each assigned native source it uses a macOS process tap (macOS 14.2+) to take over that app's audio and play it back at the channel's volume, mute state and master gain. It also measures each source's level for the meters.
 3. **Browser provider.** Accepts one bridge connection per browser profile, identifies which browser each comes from, turns the extension's messages into tab reports and carries commands back.
 4. **Mixer core.** The single source of truth: channels, the unassigned and mute lists, soft takeover, master mode, the saved layout. It neither parses browser messages nor speaks MIDI.
@@ -166,6 +167,19 @@ Knobs rest at centre, which always means "no change". The top row is unused.
 
 Sources without speed or seeking (live Twitch, Spotify music for speed, native apps) show "Not available" in the pop-up and keep the knob LED off.
 
+## Other controllers (MIDI learn)
+
+Any MIDI controller can drive the mixer. In Settings → Controller, choose **Any MIDI controller (MIDI learn)**, then the device.
+
+- **What can be learned:** each channel's volume, play/pause and mute, plus Mute all media and Microphone mute (26 functions).
+- **How:** click **Learn** next to a function, then move the fader or press the button. The assignment shows as its MIDI message, e.g. "CC 7 · ch 1"; the pop-up confirms it.
+- **Accepted messages:** control change, note and pitch bend. A volume needs a continuous control, so a note can't be learned as one.
+- **Buttons:** a note-on, or a control value of 64 or more, counts as a press. Holding a mute button for 1 s unassigns the channel, as on the Launch Control XL.
+- **One control, one function:** learning a control that's already in use moves it to the new function.
+- **Clearing:** right-click an assignment to clear it. **Clear all assignments…** sits apart from the table and asks for confirmation in its own row before removing everything.
+- **Not covered:** light feedback (every device lights its buttons differently) and the speed and seek knobs.
+- Switching controllers releases the previous device at once; assignments are kept for when you switch back.
+
 ## Mixer window
 
 The window shows the 8 channels side by side as vertical strips, in the same left-to-right order as the controller's columns, so the screen maps 1:1 onto the hardware. The menu-bar panel uses stacked rows instead (next section).
@@ -186,6 +200,11 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 - Dragging a strip from anywhere on it (except the volume bar and buttons, which keep their own behaviour) onto another channel moves it there, swapping if occupied. Sources can also be dragged in from the Unassigned list.
 - Right-clicking a strip opens a menu: **Move to channel** (each channel listed as "Free" or "swap with …"), **Bring to the front**, **Unassign** and **Always mute**. It's the non-mouse way to move a channel, and works with VoiceOver.
 - An empty channel shows a dashed outline with "Free".
+
+**Opening and size**
+
+- Starting the app yourself, including after Quit, opens the mixer window. Starting at login keeps it in the menu bar.
+- The window always fits its content: exactly eight strips wide, and as tall as what's inside. It isn't resized by hand; changing the text size resizes it, keeping its top-left corner in place.
 
 **Header and footer**
 
@@ -247,7 +266,9 @@ The controller LEDs, the window and the menu-bar panel use the same four colours
 | Setting | Default |
 | --- | --- |
 | Use fader 1 as master volume | Off; greyed out when the output device sets its volume in hardware |
-| Volume curve | Natural (gentle at the low end); alternative: linear |
+| Controller | Novation Launch Control XL mk2; alternative: any MIDI controller (MIDI learn), with a device picker and assignment table |
+| Volume curve | Natural (gentle at the low end); alternative: linear. A small graph shows how loud each fader position sounds |
+| Text size | Default; Smaller, Larger and Largest scale the mixer window, panel, pop-up and Settings. ⌘− / ⌘+ / ⌘0 in the mixer window and Settings |
 | Launch at login | On |
 | Always show in the Dock | Off: the Dock icon appears only while the mixer window is open |
 | Show on-screen pop-up | On |
@@ -260,6 +281,8 @@ The controller LEDs, the window and the menu-bar panel use the same four colours
 **Remembered volume:** the app saves one volume per website (youtube.com) and per app (League), not per tab. It updates whenever you change a source's volume and applies when a new source from that website or app gets a channel. It's stored on this Mac only: a website or app name and a volume, with no tab list, page addresses or history.
 
 **Channel layout:** which source sits on which channel is saved whenever it changes, so it survives a quit or a crash (see assignment rule 7). Only the browser, the tab's number and website, or the app's name, are stored. If the browser was restarted in between, its tabs have new numbers, so they fill channels fresh.
+
+**MIDI learn assignments** are saved per function as the message type, MIDI channel and number.
 
 **Not remembered across restarts, by design:** manual unassigns. A source you unassigned is treated as new after a restart.
 
@@ -283,6 +306,7 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 | Incognito tabs | Ignored unless you allow the extension in incognito |
 | Tab moved to another window or screen | Keeps its channel and all controls: the browser keeps the same tab ID when a tab is dragged between windows |
 | Microphone can't be muted by apps (some audio interfaces) | Solo shows "Can't be muted by apps" in the pop-up and nothing changes |
+| MIDI-learn device not plugged in | Settings and the window header show it as not connected; it connects on its own when plugged in, with its assignments |
 
 ## Permissions, install and build
 
@@ -323,6 +347,10 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [x] Always mute silences a source and shows "Muted by list"; Unmute restores it and gives it a channel
 - [x] Solo mutes the microphone in Discord, lights its LED and shows the menu-bar badge; an interface that can't be muted says so
 - [ ] Tabs in a second browser (Brave, Edge or Arc) get their own channels next to Chrome's: not tested yet
+- [x] Text size steps from Settings and ⌘− / ⌘+ / ⌘0; windows fit their content at every size, with no extra space
+- [x] The volume-curve graph follows the curve setting
+- [x] Switching controllers; MIDI learn assigns, moves and clears controls; Clear all confirms in its row; Launch Control XL lights come back after switching
+- [x] The mixer window opens on launch and after Quit, but not at login
 
 ## Security
 
@@ -331,6 +359,7 @@ LCX Mixer has no network attack surface: no server, no web app, nothing listenin
 - **Browser ↔ app:** the browser's native messaging, which it allows only for the one extension ID listed in the app's host manifest.
 - **Bridge ↔ app:** a local socket file in a folder only your user account can open (`0700`). The socket file itself is user-only (`0600`).
 - **Both ends verify each other:** a connection is accepted only if the other process runs under the same user account and is signed with the app's own code signature. A fake listener or another program can't send or receive mixer commands.
+- **MIDI:** the app only reads from the controller you choose and sends light messages only to the Launch Control XL. MIDI learn assignments are stored locally.
 - **Permissions:** only System audio recording, used to control the volume of apps on a channel. No microphone or accessibility permissions: microphone mute only changes the input device's mute or volume setting. The app makes no network requests at all; site icons come from the browser's local icon cache.
 - **Purple menu-bar dot:** while a native app is on a channel, macOS shows its purple system-audio-recording indicator, naming LCX Mixer in Control Center. It is expected and explained in the README; browser tabs never trigger it.
 

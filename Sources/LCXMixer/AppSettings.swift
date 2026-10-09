@@ -41,6 +41,19 @@ struct GroupRule: Codable, Identifiable, Equatable {
     }
 }
 
+enum ControllerKind: String, CaseIterable, Identifiable {
+    case launchControlXL, midiLearn
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .launchControlXL: return "Novation Launch Control XL mk2"
+        case .midiLearn: return "Any MIDI controller (MIDI learn)"
+        }
+    }
+}
+
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
     private let defaults = UserDefaults.standard
@@ -51,6 +64,14 @@ final class AppSettings: ObservableObject {
     @Published var rememberVolumes: Bool { didSet { defaults.set(rememberVolumes, forKey: "rememberVolumes") } }
     @Published var naturalCurve: Bool { didSet { defaults.set(naturalCurve, forKey: "naturalCurve") } }
     @Published var alwaysInDock: Bool { didSet { defaults.set(alwaysInDock, forKey: "alwaysInDock") } }
+    /// Which controller the mixer listens to.
+    @Published var controllerKind: ControllerKind { didSet { defaults.set(controllerKind.rawValue, forKey: "controllerKind") } }
+    /// The MIDI device used with MIDI learn, by its display name.
+    @Published var midiDevice: String { didSet { defaults.set(midiDevice, forKey: "midiDevice") } }
+    /// MIDI learn assignments, keyed by `LearnTarget.key`.
+    @Published var midiBindings: [String: MIDIBinding] { didSet { save(midiBindings, "midiBindings") } }
+    /// Text and layout size for the app's windows, panel and pop-up.
+    @Published var textSize: TextSize { didSet { defaults.set(textSize.rawValue, forKey: "textSize") } }
     @Published var groups: [GroupRule] { didSet { save(groups, "groups") } }
     /// Apps (bundle or group IDs) and websites the mixer leaves completely alone.
     /// An entry lives on one list only: adding it here takes it off the mute list.
@@ -96,6 +117,10 @@ final class AppSettings: ObservableObject {
         rememberVolumes = defaults.bool(forKey: "rememberVolumes")
         naturalCurve = defaults.bool(forKey: "naturalCurve")
         alwaysInDock = defaults.bool(forKey: "alwaysInDock")
+        textSize = TextSize(rawValue: defaults.integer(forKey: "textSize")) ?? .standard
+        controllerKind = ControllerKind(rawValue: defaults.string(forKey: "controllerKind") ?? "") ?? .launchControlXL
+        midiDevice = defaults.string(forKey: "midiDevice") ?? ""
+        midiBindings = AppSettings.load("midiBindings", defaults) ?? [:]
         groups = AppSettings.load("groups", defaults) ?? AppSettings.defaultGroups
         ignoreList = AppSettings.load("ignoreList", defaults) ?? AppSettings.defaultIgnore
         muteList = AppSettings.load("muteList", defaults) ?? []
@@ -108,6 +133,12 @@ final class AppSettings: ObservableObject {
             ignoreList.removeAll { muted.contains($0) }
             save(ignoreList, "ignoreList")
         }
+    }
+
+    /// One step larger (+1) or smaller (−1), stopping at the ends.
+    func stepTextSize(_ delta: Int) {
+        let next = max(TextSize.smaller.rawValue, min(TextSize.largest.rawValue, textSize.rawValue + delta))
+        if let size = TextSize(rawValue: next) { textSize = size }
     }
 
     func remember(volume: Float, for key: String) {

@@ -16,10 +16,10 @@ struct SectionHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title)
+            Text(title).scaledFont(AppText.headline, weight: .bold)
             if let description {
                 Text(description)
-                    .font(.caption)
+                    .scaledFont(AppText.caption)
                     .fontWeight(.regular)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
@@ -41,7 +41,7 @@ private struct SettingLabel: View {
             Text(title)
             if let description {
                 Text(description)
-                    .font(.caption)
+                    .scaledFont(AppText.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -54,10 +54,13 @@ struct SettingsView: View {
     @ObservedObject var core: MixerCore
     @State private var newGroupName = ""
     @State private var newGroupPrefixes = ""
+    @Environment(\.uiScale) private var scale
 
     var body: some View {
         Form {
-            Section("Controller") {
+            controllerSection
+
+            Section {
                 Toggle(isOn: $settings.masterMode) {
                     SettingLabel(
                         title: "Use fader 1 as master volume",
@@ -74,9 +77,25 @@ struct SettingsView: View {
                 } label: {
                     SettingLabel(title: "Volume curve", description: nil)
                 }
+
+                HStack(alignment: .center, spacing: 16) {
+                    SettingLabel(title: "How loud it sounds",
+                                 description: "Fader position across, loudness up. A straight line means every bit of fader travel changes the sound by the same amount.")
+                    Spacer()
+                    VolumeCurveGraph(natural: settings.naturalCurve)
+                }
+            } header: {
+                SectionHeader("Volume")
             }
 
-            Section("General") {
+            Section {
+                Picker(selection: $settings.textSize) {
+                    ForEach(TextSize.allCases) { size in Text(size.label).tag(size) }
+                } label: {
+                    SettingLabel(title: "Text size",
+                                 description: "Scales the mixer window, menu-bar panel, pop-up and Settings. In the mixer window and Settings, ⌘− and ⌘+ step it, and ⌘0 resets it.")
+                }
+                .pickerStyle(.menu)
                 Toggle(isOn: $settings.launchAtLogin) {
                     SettingLabel(title: "Launch at login", description: nil)
                 }
@@ -92,6 +111,8 @@ struct SettingsView: View {
                     SettingLabel(title: "Remember volume per app and website",
                                  description: "Each website or app plays at the last volume you set for it. Set one YouTube tab to 40%, and every YouTube tab you open later also plays at 40%.")
                 }
+            } header: {
+                SectionHeader("General")
             }
 
             groupsSection
@@ -101,7 +122,47 @@ struct SettingsView: View {
             browsersSection
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 700)
+        .scaledFont(AppText.body)
+        .frame(width: 560 * scale, height: 700)
+    }
+
+    // MARK: - Controller
+
+    @State private var midiDevices: [String] = []
+
+    private var controllerSection: some View {
+        Section {
+            Picker(selection: $settings.controllerKind) {
+                ForEach(ControllerKind.allCases) { kind in Text(kind.label).tag(kind) }
+            } label: {
+                SettingLabel(title: "Controller", description: core.controllerConnected
+                             ? "\(core.controllerName) is connected."
+                             : "\(core.controllerName) isn't connected.")
+            }
+
+            if settings.controllerKind == .midiLearn {
+                Picker(selection: $settings.midiDevice) {
+                    Text("Choose a device").tag("")
+                    ForEach(deviceChoices, id: \.self) { name in Text(name).tag(name) }
+                } label: {
+                    SettingLabel(title: "MIDI device", description: nil)
+                }
+                .onAppear { midiDevices = MIDIController.sourceNames() }
+
+                MIDILearnTable(settings: settings, core: core)
+            }
+        } header: {
+            SectionHeader("Controller", description: settings.controllerKind == .midiLearn
+                          ? "Click Learn, then move the fader or press the button on your controller. Right-click an assignment to clear it. MIDI learn has no light feedback."
+                          : nil)
+        }
+    }
+
+    /// Available devices, plus the saved one even while it's unplugged.
+    private var deviceChoices: [String] {
+        var names = midiDevices
+        if !settings.midiDevice.isEmpty && !names.contains(settings.midiDevice) { names.append(settings.midiDevice) }
+        return names
     }
 
     // MARK: - App groups
@@ -127,9 +188,9 @@ struct SettingsView: View {
                 GridRow {
                     Text("Group name")
                     Text("Bundle ID prefixes (comma separated)")
-                    Color.clear.frame(width: 44, height: 1)
+                    Color.clear.frame(width: 44 * scale, height: 1)
                 }
-                .font(.caption.weight(.semibold))
+                .scaledFont(AppText.caption, weight: .semibold)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
@@ -138,12 +199,12 @@ struct SettingsView: View {
                         TextField("Group name", text: $group.name, prompt: Text("e.g. League"))
                             .labelsHidden()
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: 140)
+                            .frame(width: 140 * scale)
                             .accessibilityLabel("Group name")
                         TextField("Bundle ID prefixes", text: $group.prefixesText, prompt: Text("e.g. com.riotgames."))
                             .labelsHidden()
                             .textFieldStyle(.roundedBorder)
-                            .font(.system(.body, design: .monospaced))
+                            .scaledFont(AppText.body, design: .monospaced)
                             .accessibilityLabel("Bundle ID prefixes for \(group.name.isEmpty ? "unnamed group" : group.name)")
                         Button {
                             settings.groups.removeAll { $0.id == group.id }
@@ -153,7 +214,7 @@ struct SettingsView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.borderless)
-                        .frame(width: 44)
+                        .frame(width: 44 * scale)
                         .help("Remove this group")
                         .accessibilityLabel("Remove group \(group.name.isEmpty ? "without a name" : group.name)")
                     }
@@ -162,8 +223,8 @@ struct SettingsView: View {
                             Text(group.name.trimmingCharacters(in: .whitespaces).isEmpty
                                  ? "This group needs a name."
                                  : "This group needs at least one prefix.")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
+                                .scaledFont(AppText.caption)
+                                .foregroundStyle(Color.warningText)
                                 .gridCellColumns(3)
                         }
                     }
@@ -174,25 +235,25 @@ struct SettingsView: View {
                     TextField("New group name", text: $newGroupName, prompt: Text("e.g. League"))
                         .labelsHidden()
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 140)
+                        .frame(width: 140 * scale)
                         .accessibilityLabel("New group name")
                         .onSubmit(addGroup)
                     TextField("New group bundle ID prefixes", text: $newGroupPrefixes, prompt: Text("e.g. com.riotgames."))
                         .labelsHidden()
                         .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
+                        .scaledFont(AppText.body, design: .monospaced)
                         .accessibilityLabel("Bundle ID prefixes for the new group")
                         .onSubmit(addGroup)
                     Button("Add", action: addGroup)
                         .disabled(!canAddGroup)
-                        .frame(width: 44)
+                        .frame(width: 44 * scale)
                         .accessibilityLabel("Add group")
                 }
                 if let hint = newGroupHint {
                     GridRow {
                         Text(hint)
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                            .scaledFont(AppText.caption)
+                            .foregroundStyle(Color.warningText)
                             .gridCellColumns(3)
                     }
                 }
@@ -293,6 +354,7 @@ struct SettingsView: View {
 /// Entries sit in code-font fields, so they can be edited, selected and copied. Each row can be moved
 /// to the other list or removed; the last row adds a new entry.
 private struct KeyListEditor: View {
+    @Environment(\.uiScale) private var scale
     @Binding var items: [String]
     let listName: String
     let prompt: String
@@ -309,7 +371,7 @@ private struct KeyListEditor: View {
                     TextField("Entry", text: binding(at: index), prompt: Text(prompt))
                         .labelsHidden()
                         .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
+                        .scaledFont(AppText.body, design: .monospaced)
                         .accessibilityLabel("\(item) on the \(listName)")
                         .onSubmit { tidy() }
                     HStack(spacing: 2) {
@@ -334,19 +396,19 @@ private struct KeyListEditor: View {
                         .help("Remove from the \(listName)")
                         .accessibilityLabel("Remove \(item) from the \(listName)")
                     }
-                    .frame(width: 52)
+                    .frame(width: 52 * scale)
                 }
             }
             GridRow(alignment: .center) {
                 TextField("New entry", text: $newItem, prompt: Text("Bundle ID or website, \(prompt)"))
                     .labelsHidden()
                     .textFieldStyle(.roundedBorder)
-                    .font(.system(.body, design: .monospaced))
+                    .scaledFont(AppText.body, design: .monospaced)
                     .accessibilityLabel("Bundle ID or website to add to the \(listName)")
                     .onSubmit(add)
                 Button("Add", action: add)
                     .disabled(trimmedNew.isEmpty)
-                    .frame(width: 52)
+                    .frame(width: 52 * scale)
             }
         }
     }
@@ -371,5 +433,175 @@ private struct KeyListEditor: View {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && seen.insert($0).inserted }
         if cleaned != items { items = cleaned }
+    }
+}
+
+/// "How loud it sounds" for both volume curves: fader position across, perceived loudness up.
+/// Perceived loudness roughly doubles every 10 dB, so it grows with gain^0.6. Natural (gain = position²)
+/// therefore comes out close to a straight line; Linear changes quickly near the bottom and slowly near the top.
+/// Plotting raw gain instead would make Natural look like the extreme curve, the opposite of how it feels.
+struct VolumeCurveGraph: View {
+    let natural: Bool
+    @Environment(\.uiScale) private var scale
+
+    private static let naturalExponent = 2 * 0.6
+    private static let linearExponent = 1 * 0.6
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Canvas { ctx, size in
+                let r = CGRect(origin: .zero, size: size).insetBy(dx: 1, dy: 1)
+                var axes = Path()
+                axes.move(to: CGPoint(x: r.minX, y: r.minY))
+                axes.addLine(to: CGPoint(x: r.minX, y: r.maxY))
+                axes.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+                ctx.stroke(axes, with: .color(.secondary.opacity(0.5)), lineWidth: 1)
+
+                func curve(_ exponent: Double) -> Path {
+                    var p = Path()
+                    for i in 0...48 {
+                        let x = Double(i) / 48
+                        let point = CGPoint(x: r.minX + x * r.width, y: r.maxY - pow(x, exponent) * r.height)
+                        if i == 0 { p.move(to: point) } else { p.addLine(to: point) }
+                    }
+                    return p
+                }
+                let selected = natural ? Self.naturalExponent : Self.linearExponent
+                let other = natural ? Self.linearExponent : Self.naturalExponent
+                ctx.stroke(curve(other), with: .color(.secondary.opacity(0.55)), style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+                ctx.stroke(curve(selected), with: .color(.accentColor), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+            }
+            .frame(width: 150 * scale, height: 76 * scale)
+
+            HStack(spacing: 12) {
+                legend("Natural", selected: natural)
+                legend("Linear", selected: !natural)
+            }
+            .scaledFont(AppText.caption2)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(natural
+            ? "Graph: with the Natural curve, loudness rises evenly along the whole fader."
+            : "Graph: with the Linear curve, loudness changes quickly near the bottom of the fader and slowly in the top half.")
+    }
+
+    private func legend(_ name: String, selected: Bool) -> some View {
+        HStack(spacing: 4) {
+            Capsule()
+                .fill(selected ? Color.accentColor : Color.secondary.opacity(0.55))
+                .frame(width: 12, height: selected ? 2.5 : 1.5)
+            Text(name).foregroundStyle(selected ? Color.primary : Color.secondary)
+        }
+    }
+}
+
+/// MIDI learn assignments: volume, play/pause and mute for each channel, then mute-all and microphone.
+private struct MIDILearnTable: View {
+    @ObservedObject var settings: AppSettings
+    @ObservedObject var core: MixerCore
+    @Environment(\.uiScale) private var scale
+    @State private var confirmingClearAll = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12 * scale) {
+            table
+            Divider()
+            // Kept apart from the assignment buttons: it removes every assignment at once.
+            // Confirmation happens right here in the row, in the app's own legible styles,
+            // rather than in a system dialog.
+            HStack(spacing: 8 * scale) {
+                if confirmingClearAll {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Color.warningText)
+                        .accessibilityHidden(true)
+                    Text("Clear all \(settings.midiBindings.count) assignments? Each control will need to be learned again.")
+                        .scaledFont(AppText.status, weight: .medium)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Cancel") { confirmingClearAll = false }
+                        .keyboardShortcut(.cancelAction)
+                    Button {
+                        core.clearAllBindings()
+                        confirmingClearAll = false
+                    } label: {
+                        Label {
+                            Text("Clear all")
+                        } icon: {
+                            Image(systemName: "trash").foregroundStyle(Color.errorText)
+                        }
+                    }
+                } else {
+                    Text(settings.midiBindings.isEmpty
+                         ? "No assignments yet."
+                         : "\(settings.midiBindings.count) of \(MIDILearnDriver.allTargets.count) controls assigned.")
+                        .scaledFont(AppText.status)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    // Plain, fully legible text; the red bin icon marks it as destructive.
+                    Button { confirmingClearAll = true } label: {
+                        Label {
+                            Text("Clear all assignments…")
+                        } icon: {
+                            Image(systemName: "trash").foregroundStyle(Color.errorText)
+                        }
+                    }
+                    .disabled(settings.midiBindings.isEmpty)
+                    .help("Remove every MIDI learn assignment")
+                }
+            }
+            .controlSize(.regular)
+        }
+    }
+
+    private var table: some View {
+        Grid(alignment: .leading, horizontalSpacing: 10 * scale, verticalSpacing: 6 * scale) {
+            GridRow {
+                Text("Channel")
+                Text("Volume")
+                Text("Play/pause")
+                Text("Mute")
+            }
+            .scaledFont(AppText.caption, weight: .semibold)
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+
+            ForEach(0..<MixerCore.channelCount, id: \.self) { ch in
+                GridRow {
+                    Text("\(ch + 1)").monospacedDigit()
+                    learnButton(.fader(ch))
+                    learnButton(.playPause(ch))
+                    learnButton(.mute(ch))
+                }
+            }
+            GridRow {
+                Text("Mute all media").gridCellColumns(2)
+                learnButton(.muteAll).gridCellColumns(2)
+            }
+            GridRow {
+                Text("Microphone mute").gridCellColumns(2)
+                learnButton(.microphone).gridCellColumns(2)
+            }
+        }
+    }
+
+    private func learnButton(_ target: LearnTarget) -> some View {
+        let binding = settings.midiBindings[target.key]
+        let waiting = core.learning == target
+        return Button {
+            if waiting { core.cancelLearning() } else { core.startLearning(target) }
+        } label: {
+            Text(waiting ? "Move a control…" : (binding?.summary ?? "Learn"))
+                .scaledFont(AppText.caption, design: binding == nil || waiting ? .default : .monospaced)
+                .lineLimit(1)
+                .frame(minWidth: 96 * scale)
+        }
+        .buttonStyle(.bordered)
+        .tint(waiting ? Color.accentColor : nil)
+        .contextMenu {
+            if binding != nil { Button("Clear") { core.clearBinding(target) } }
+        }
+        .help(waiting ? "Cancel learning" : "Assign \(target.label)")
+        .accessibilityLabel(waiting ? "\(target.label): waiting for a control. Activate to cancel."
+                            : "\(target.label): \(binding?.summary ?? "not assigned"). Activate to learn.")
     }
 }

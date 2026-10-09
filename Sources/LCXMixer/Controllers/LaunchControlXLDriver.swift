@@ -8,14 +8,14 @@ final class LaunchControlXLDriver: ControllerDriver {
     var onConnectionChange: ((Bool) -> Void)?
     var onNeedsLights: (() -> Void)?
 
-    private let midi = MIDIController()
+    private let midi = MIDIController(needsOutput: true) { $0.localizedCaseInsensitiveContains("Launch Control XL") }
     /// Last value sent per LED, so only changes go out. Buttons are keyed by note, knobs by 1000 + index.
     private var sent: [Int: UInt8] = [:]
 
     var isConnected: Bool { midi.isConnected }
 
     func start() {
-        midi.onEvent = { [weak self] event in MainActor.assumeIsolated { self?.handle(event) } }
+        midi.onMessage = { [weak self] message in MainActor.assumeIsolated { self?.handle(message) } }
         midi.onConnectionChange = { [weak self] connected in MainActor.assumeIsolated { self?.connectionChanged(connected) } }
         midi.start()
     }
@@ -47,6 +47,11 @@ final class LaunchControlXLDriver: ControllerDriver {
         if midi.isConnected { midi.send(LCXL.resetLEDs) }
     }
 
+    func stop() {
+        clearLights()
+        midi.stop()
+    }
+
     // MARK: - Private
 
     private func connectionChanged(_ connected: Bool) {
@@ -63,22 +68,31 @@ final class LaunchControlXLDriver: ControllerDriver {
         }
     }
 
-    private func handle(_ event: ControllerEvent) {
-        switch event {
-        case let .fader(index, value):
-            onAction?(.fader(channel: index, position: Float(value) / 127))
-        case let .topButton(index, pressed):
-            if pressed { onAction?(.playPause(channel: index)) }
-        case let .bottomButton(index, pressed):
-            onAction?(.muteButton(channel: index, pressed: pressed))
-        case let .sideMute(pressed):
-            if pressed { onAction?(.muteAll) }
-        case let .sideSolo(pressed):
-            if pressed { onAction?(.micMute) }
-        case let .speedKnob(index, value):
-            onAction?(.speedKnob(channel: index, position: Float(value) / 127))
-        case let .seekKnob(index, value):
-            onAction?(.seekKnob(channel: index, position: Float(value) / 127))
+    /// Factory Template 1 map. The MIDI channel isn't checked, as before.
+    private func handle(_ m: MIDIMessage) {
+        switch m.kind {
+        case .controlChange:
+            let p = Float(m.value) / 127
+            if let ch = LCXL.faderCCs.firstIndex(of: m.number) {
+                onAction?(.fader(channel: ch, position: p))
+            } else if let ch = LCXL.seekKnobCCs.firstIndex(of: m.number) {
+                onAction?(.seekKnob(channel: ch, position: p))
+            } else if let ch = LCXL.speedKnobCCs.firstIndex(of: m.number) {
+                onAction?(.speedKnob(channel: ch, position: p))
+            }
+        case .noteOn, .noteOff:
+            let pressed = m.kind == .noteOn
+            if let ch = LCXL.topButtonNotes.firstIndex(of: m.number) {
+                if pressed { onAction?(.playPause(channel: ch)) }
+            } else if let ch = LCXL.bottomButtonNotes.firstIndex(of: m.number) {
+                onAction?(.muteButton(channel: ch, pressed: pressed))
+            } else if m.number == LCXL.muteNote {
+                if pressed { onAction?(.muteAll) }
+            } else if m.number == LCXL.soloNote {
+                if pressed { onAction?(.micMute) }
+            }
+        case .pitchBend:
+            break
         }
     }
 

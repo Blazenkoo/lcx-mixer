@@ -1,8 +1,12 @@
 import SwiftUI
 
 struct ChannelStripView: View {
+    /// Strip width at Default text size; the mixer window's minimum width is built from it.
+    static let width: CGFloat = 136
+
     @ObservedObject var core: MixerCore
     let index: Int
+    @Environment(\.uiScale) private var scale
     @State private var isTargeted = false
 
     private var source: Source? { core.source(onChannel: index) }
@@ -26,10 +30,10 @@ struct ChannelStripView: View {
                 .contentShape(RoundedRectangle(cornerRadius: 12))
                 .draggable(s.id) {
                     HStack(spacing: 6) {
-                        SourceIcon(source: s, size: 20)
-                        Text("\(index + 1) · \(s.name)").font(.system(size: 13, weight: .semibold))
+                        SourceIcon(source: s, size: 20 * scale)
+                        Text("\(index + 1) · \(s.name)").scaledFont(13, weight: .semibold)
                     }
-                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .padding(.horizontal, 10 * scale).padding(.vertical, 6 * scale)
                 }
                 .contextMenu { channelMenu(s) }
                 .accessibilityHint("Drag onto another channel, or use Move to channel in the context menu. If that channel is in use, the two swap.")
@@ -64,7 +68,7 @@ struct ChannelStripView: View {
     private var strip: some View {
         VStack(spacing: 8) {
             Text(isMaster ? "Master" : "\(index + 1)")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .scaledFont(12, weight: .semibold, design: .rounded)
                 .foregroundStyle(.secondary)
 
             if isMaster {
@@ -75,8 +79,8 @@ struct ChannelStripView: View {
                 empty
             }
         }
-        .padding(10)
-        .frame(width: 136, height: 430)
+        .padding(10 * scale)
+        .frame(width: Self.width * scale, height: 430 * scale)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(isMaster ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(source == nil ? 0.0 : 0.08))
@@ -95,17 +99,17 @@ struct ChannelStripView: View {
     @ViewBuilder
     private func occupied(_ s: Source) -> some View {
         VStack(spacing: 4) {
-            SourceIcon(source: s, size: 22)
-                .padding(.vertical, 6)
+            SourceIcon(source: s, size: 22 * scale)
+                .padding(.vertical, 6 * scale)
             Text(s.nameWithBrowser)
-                .font(.system(size: 13, weight: .semibold))
+                .scaledFont(13, weight: .semibold)
                 .lineLimit(1)
             Text(s.detail.isEmpty ? " " : s.detail)
-                .font(.caption2)
+                .scaledFont(AppText.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
-                .frame(height: 26, alignment: .top)
+                .frame(height: 26 * scale, alignment: .top)
         }
         // A tap rather than a Button, so a drag that starts here moves the channel instead of being swallowed.
         .contentShape(Rectangle())
@@ -117,7 +121,7 @@ struct ChannelStripView: View {
 
         StatusBadge(status: status)
         if s.kind == .tab && !s.canSetVolume {
-            Text("Mute only").font(.caption2).foregroundStyle(.red)
+            Text("Mute only").scaledFont(AppText.status, weight: .medium).foregroundStyle(Color.errorText)
         }
 
         VolumeBar(
@@ -139,7 +143,7 @@ struct ChannelStripView: View {
                 .disabled(!s.canPlayPause)
             }
             iconButton(s.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill", help: s.isMuted ? "Unmute" : "Mute",
-                       tint: s.isMuted ? .red : nil) {
+                       tint: s.isMuted ? Color.errorText : nil) {
                 core.toggleMute(s.id)
             }
             iconButton("xmark", help: "Unassign from this channel") {
@@ -151,7 +155,7 @@ struct ChannelStripView: View {
     private var empty: some View {
         VStack {
             Spacer()
-            Text("Free").font(.callout).foregroundStyle(.tertiary)
+            Text("Free").scaledFont(AppText.callout).foregroundStyle(.tertiary)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -160,13 +164,13 @@ struct ChannelStripView: View {
     private var masterBody: some View {
         VStack(spacing: 8) {
             Image(systemName: "speaker.wave.3.fill")
-                .font(.system(size: 15))
-                .frame(width: 22, height: 22)
-                .padding(.vertical, 6)
+                .scaledFont(15)
+                .frame(width: 22 * scale, height: 22 * scale)
+                .padding(.vertical, 6 * scale)
                 .foregroundStyle(Color.accentColor)
-            Text("Master").font(.system(size: 13, weight: .semibold))
-            Text(core.outputName).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
-                .multilineTextAlignment(.center).frame(height: 26, alignment: .top)
+            Text("Master").scaledFont(13, weight: .semibold)
+            Text(core.outputName).scaledFont(AppText.caption2).foregroundStyle(.secondary).lineLimit(2)
+                .multilineTextAlignment(.center).frame(height: 26 * scale, alignment: .top)
             StatusBadge(status: .master)
             VolumeBar(
                 position: core.masterVolume,
@@ -178,15 +182,15 @@ struct ChannelStripView: View {
             ) { core.setMasterFromUI($0) }
             .frame(maxHeight: .infinity)
             .padding(.vertical, 10)
-            Color.clear.frame(height: 22)
+            Color.clear.frame(height: 22 * scale)
         }
     }
 
     private func iconButton(_ symbol: String, help: String, tint: Color? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
-                .frame(width: 24, height: 22)
+                .scaledFont(11, weight: .semibold)
+                .frame(width: 24 * scale, height: 22 * scale)
                 .foregroundStyle(tint ?? Color.primary)
         }
         .buttonStyle(.bordered)
@@ -204,22 +208,23 @@ struct VolumeBar: View {
     let levels: LevelStore?
     let meterID: String?
     let onChange: (Float) -> Void
+    @Environment(\.uiScale) private var scale
 
     var body: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 6) {
+        VStack(spacing: 6 * scale) {
+            HStack(spacing: 6 * scale) {
                 bar
                 if let levels {
                     LevelMeter(levels: levels, id: meterID)
                 }
             }
             Text(hint ?? "\(Int((position * 100).rounded()))%")
-                .font(.system(size: hint == nil ? 12 : 10, weight: .medium).monospacedDigit())
-                .foregroundStyle(hint == nil ? Color.primary : Color.orange)
+                .scaledFont(hint == nil ? 12 : AppText.status, weight: .medium, monospacedDigit: true)
+                .foregroundStyle(hint == nil ? Color.primary : Color.warningText)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
-                .frame(height: 28)
+                .frame(height: 28 * scale)
         }
     }
 
@@ -248,6 +253,6 @@ struct VolumeBar: View {
                     }
             )
         }
-        .frame(width: 26)
+        .frame(width: 26 * scale)
     }
 }

@@ -11,6 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let popover = NSPopover()
     private var mixerWindow: NSWindow?
     private var settingsWindow: NSWindow?
+    private var launchedAtLogin = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // The launch event is only available this early.
+        launchedAtLogin = LaunchContext.isLoginLaunch()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         core.onOSD = { [weak self] message in self?.osd.show(message) }
@@ -24,11 +30,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         popover.behavior = .transient
         popover.animates = true
-        popover.contentViewController = NSHostingController(rootView: PanelView(
-            core: core,
-            openMixer: { [weak self] in self?.showMixer() },
-            openSettings: { [weak self] in self?.showSettings() }
-        ))
+        let panel = NSHostingController(rootView: ScaledRoot(settings: settings) {
+            PanelView(
+                core: core,
+                openMixer: { [weak self] in self?.showMixer() },
+                openSettings: { [weak self] in self?.showSettings() }
+            )
+        })
+        panel.sizingOptions = [.preferredContentSize] // the popover follows the panel's size, including text size
+        popover.contentViewController = panel
 
         core.start()
         updateStatusIcon()
@@ -37,12 +47,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.updateDockPresence() } }
         }
         updateDockPresence()
+        textSizeObservation = settings.$textSize.dropFirst().sink { [weak self] _ in
+            // Measure after SwiftUI has laid the windows out at the new size.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { MainActor.assumeIsolated { self?.fitWindowsToContent() } }
+        }
 
         if settings.launchAtLogin { settings.applyLaunchAtLogin() }
-        if !UserDefaults.standard.bool(forKey: "hasLaunchedBefore") {
-            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-            showMixer()
-        }
+        // Opening the app yourself (including after Quit) shows the mixer; starting at login stays in the menu bar.
+        if !launchedAtLogin { showMixer() }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -57,6 +69,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - Dock
 
     private var dockObservation: Any?
+    private var textSizeObservation: Any?
+    /// After a text size change, sizes each window to its content's own preferred size, larger or
+    /// smaller. That size comes from SwiftUI's layout of the content alone, never from the window's
+    /// current size, so nothing can build up across changes.
+    private func fitWindowsToContent() {
+        for window in [mixerWindow, settingsWindow].compactMap({ $0 }) {
+            guard let content = window.contentViewController else { continue }
+            content.view.layoutSubtreeIfNeeded()
+            let size = content.preferredContentSize
+            guard size.width > 0, size.height > 0 else { continue }
+            resize(window, toContent: size)
+        }
+    }
+
+    /// Resizes keeping the window's top-left corner in place, and inside the screen it's on.
+    private func resize(_ window: NSWindow, toContent size: NSSize) {
+        var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
+        let old = window.frame
+        frame.origin = NSPoint(x: old.minX, y: old.maxY - frame.height)
+        if let visible = (window.screen ?? NSScreen.main)?.visibleFrame {
+            frame.size.width = min(frame.width, visible.width)
+            frame.size.height = min(frame.height, visible.height)
+            frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
+            frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
+        }
+        if frame != old { window.setFrame(frame, display: true, animate: true) }
+    }
 
     /// Dock icon while the mixer window is open, or always if the setting says so.
     private func updateDockPresence() {
@@ -111,20 +150,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if mixerWindow == nil {
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 1180, height: 680),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                // Not resizable: the window always matches its content, at every text size.
+                styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
                 defer: false
             )
             window.title = "LCX Mixer"
             window.isReleasedWhenClosed = false
-            window.contentViewController = NSHostingController(rootView: MixerWindowView(
-                core: core,
-                openSettings: { [weak self] in self?.showSettings() }
-            ))
+            let content = NSHostingController(rootView: ScaledRoot(settings: settings, shortcuts: true) {
+                MixerWindowView(
+                    core: core,
+                    openSettings: { [weak self] in self?.showSettings() }
+                )
+            })
+            content.sizingOptions = [.preferredContentSize] // the window follows the content's size
+            window.contentViewController = content
             window.center()
+            // Remembers where the window was; its size always comes from the content (below).
             window.setFrameAutosaveName("MixerWindow")
             window.delegate = self
             mixerWindow = window
+        }
+        if let window = mixerWindow, let content = window.contentViewController {
+            content.view.layoutSubtreeIfNeeded()
+            let size = content.preferredContentSize
+            if size.width > 0, size.height > 0 { resize(window, toContent: size) }
         }
         mixerWindow?.makeKeyAndOrderFront(nil)
         updateDockPresence()
@@ -142,7 +192,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             )
             window.title = "LCX Mixer Settings"
             window.isReleasedWhenClosed = false
-            window.contentViewController = NSHostingController(rootView: SettingsView(settings: settings, core: core))
+            let content = NSHostingController(rootView: ScaledRoot(settings: settings, shortcuts: true) {
+                SettingsView(settings: settings, core: core)
+            })
+            content.sizingOptions = [.preferredContentSize]
+            window.contentViewController = content
             window.center()
             settingsWindow = window
         }
@@ -211,5 +265,38 @@ enum StatusIcon {
         }
         image.isTemplate = true
         return image
+    }
+}
+
+/// How the app was started.
+enum LaunchContext {
+    /// True when macOS started the app as a login item. Besides the launch event's own flag,
+    /// a start within 60 seconds of logging in also counts, in case the flag is missing.
+    static func isLoginLaunch() -> Bool {
+        if let event = NSAppleEventManager.shared().currentAppleEvent,
+           event.eventID == AEEventID(kAEOpenApplication),
+           event.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == OSType(keyAELaunchedAsLogInItem) {
+            return true
+        }
+        if let login = consoleLoginTime(), Date().timeIntervalSince(login) < 60 { return true }
+        return false
+    }
+
+    /// When the current user last logged in at this Mac's screen.
+    private static func consoleLoginTime() -> Date? {
+        let user = NSUserName()
+        var latest: Date?
+        setutxent()
+        defer { endutxent() }
+        while let entry = getutxent() {
+            let e = entry.pointee
+            guard Int32(e.ut_type) == USER_PROCESS else { continue }
+            let line = withUnsafeBytes(of: e.ut_line) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+            let name = withUnsafeBytes(of: e.ut_user) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+            guard line == "console", name == user else { continue }
+            let date = Date(timeIntervalSince1970: TimeInterval(e.ut_tv.tv_sec))
+            if latest.map({ date > $0 }) ?? true { latest = date }
+        }
+        return latest
     }
 }

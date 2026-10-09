@@ -15,15 +15,16 @@ extension ChannelStatus {
 struct StatusBadge: View {
     let status: ChannelStatus
     var showLabel = true
+    @Environment(\.uiScale) private var scale
 
     var body: some View {
-        HStack(spacing: 5) {
-            Circle().fill(status.color).frame(width: 8, height: 8)
+        HStack(spacing: 5 * scale) {
+            Circle().fill(status.color).frame(width: 8 * scale, height: 8 * scale)
             if let symbol = status.symbol {
-                Image(systemName: symbol).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                Image(systemName: symbol).scaledFont(10, weight: .semibold).foregroundStyle(.secondary)
             }
             if showLabel {
-                Text(status.label).font(.caption).foregroundStyle(.secondary)
+                Text(status.label).scaledFont(AppText.caption).foregroundStyle(.secondary)
             }
         }
         .accessibilityElement(children: .combine)
@@ -99,21 +100,22 @@ struct HorizontalMeter: View {
 
 struct HeaderStatus: View {
     @ObservedObject var core: MixerCore
+    @Environment(\.uiScale) private var scale
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 12 * scale) {
             Label {
-                Text(core.controllerConnected ? "Launch Control XL connected" : "Controller not connected")
+                Text(core.controllerConnected ? "\(core.controllerName) connected" : "Controller not connected")
             } icon: {
-                Circle().fill(core.controllerConnected ? Color.green : Color.red).frame(width: 7, height: 7)
+                Circle().fill(core.controllerConnected ? Color.green : Color.red).frame(width: 7 * scale, height: 7 * scale)
             }
-            .foregroundStyle(core.controllerConnected ? Color.secondary : Color.red)
+            .foregroundStyle(core.controllerConnected ? Color.secondary : Color.errorText)
 
             if core.muteAll {
-                Label("All media muted", systemImage: "speaker.slash.fill").foregroundStyle(.red)
+                Label("All media muted", systemImage: "speaker.slash.fill").foregroundStyle(Color.errorText).fontWeight(.medium)
             }
             if core.micMuted {
-                Label("Microphone muted", systemImage: "mic.slash.fill").foregroundStyle(.red)
+                Label("Microphone muted", systemImage: "mic.slash.fill").foregroundStyle(Color.errorText).fontWeight(.medium)
             }
             if core.chromeProblem {
                 Button {
@@ -122,7 +124,7 @@ struct HeaderStatus: View {
                     Label("Browser extension not connected", systemImage: "exclamationmark.triangle.fill")
                 }
                 .buttonStyle(.link)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color.warningText)
                 .help("Load the extension from this folder: open the browser's extensions page, turn on Developer mode, choose Load unpacked")
             }
             if core.wrongExtensionFolder && core.browserConnected {
@@ -132,7 +134,7 @@ struct HeaderStatus: View {
                     Label("A browser is using an outdated extension folder", systemImage: "exclamationmark.triangle.fill")
                 }
                 .buttonStyle(.link)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color.warningText)
                 .help("On the browser's extensions page remove LCX Mixer, then Load unpacked from this folder so it updates itself")
             }
             if core.permissionStatus == .denied {
@@ -142,10 +144,10 @@ struct HeaderStatus: View {
                     Label("Audio permission needed", systemImage: "lock.fill")
                 }
                 .buttonStyle(.link)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color.warningText)
             }
         }
-        .font(.caption)
+        .scaledFont(AppText.status)
         .labelStyle(.titleAndIcon)
     }
 }

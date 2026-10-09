@@ -32,6 +32,10 @@ final class MixerCore: ObservableObject {
     @Published private(set) var micMuted = false { didSet { scheduleRefresh() } }
     @Published private(set) var faders: [FaderState] = Array(repeating: FaderState(), count: MixerCore.channelCount)
     @Published private(set) var controllerConnected = false { didSet { onStatusChange?() } }
+    /// The current controller's name, e.g. "Launch Control XL".
+    @Published private(set) var controllerName = ""
+    /// The MIDI learn target waiting for a control to be moved, if any.
+    @Published private(set) var learning: LearnTarget?
     /// At least one browser's extension is connected.
     @Published private(set) var browserConnected = false
     /// Every open extension connection (one per browser profile).
@@ -49,8 +53,8 @@ final class MixerCore: ObservableObject {
     var onOSD: ((OSDMessage) -> Void)?
     var onStatusChange: (() -> Void)?
 
-    /// The hardware the mixer is controlled from.
-    private let controller: ControllerDriver = LaunchControlXLDriver()
+    /// The hardware the mixer is controlled from; replaced when Settings picks another controller.
+    private var controller: ControllerDriver
     /// Output device and master volume (and the process taps the native provider uses).
     private let engine: AudioEngine
     /// Source providers: native apps and browser tabs.
@@ -94,6 +98,7 @@ final class MixerCore: ObservableObject {
         self.settings = settings
         let engine = AudioEngine()
         self.engine = engine
+        self.controller = MixerCore.makeController(settings)
         self.native = NativeAppProvider(settings: settings, engine: engine)
     }
 
@@ -163,10 +168,7 @@ final class MixerCore: ObservableObject {
         chrome.onConnectionsChange = { [weak self] connections in MainActor.assumeIsolated { self?.browsersChanged(connections) } }
         chrome.start()
 
-        controller.onAction = { [weak self] action in MainActor.assumeIsolated { self?.handle(action) } }
-        controller.onConnectionChange = { [weak self] connected in MainActor.assumeIsolated { self?.controllerConnectionChanged(connected) } }
-        controller.onNeedsLights = { [weak self] in MainActor.assumeIsolated { self?.refreshLEDs() } }
-        controller.start()
+        startController()
 
         engine.onOutputDeviceChange = { [weak self] in self?.outputChanged() }
         engine.onTapFailure = { id in log("Could not control audio of", id) }
@@ -188,6 +190,12 @@ final class MixerCore: ObservableObject {
         }.store(in: &cancellables)
         settings.$muteList.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.applyMuteList() } }
+        }.store(in: &cancellables)
+        settings.$controllerKind.removeDuplicates().dropFirst().sink { [weak self] _ in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.switchController() } }
+        }.store(in: &cancellables)
+        settings.$midiDevice.removeDuplicates().dropFirst().sink { [weak self] _ in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.switchController() } }
         }.store(in: &cancellables)
     }
 
@@ -637,6 +645,68 @@ final class MixerCore: ObservableObject {
     }
 
     // MARK: - Controller
+
+    private static func makeController(_ settings: AppSettings) -> ControllerDriver {
+        switch settings.controllerKind {
+        case .launchControlXL: return LaunchControlXLDriver()
+        case .midiLearn: return MIDILearnDriver(settings: settings)
+        }
+    }
+
+    private func startController() {
+        controllerName = controller.displayName
+        controller.onAction = { [weak self] action in MainActor.assumeIsolated { self?.handle(action) } }
+        controller.onConnectionChange = { [weak self] connected in MainActor.assumeIsolated { self?.controllerConnectionChanged(connected) } }
+        controller.onNeedsLights = { [weak self] in MainActor.assumeIsolated { self?.refreshLEDs() } }
+        if let learner = controller as? MIDILearnDriver {
+            learner.onLearned = { [weak self] target, binding in MainActor.assumeIsolated { self?.learned(target, binding) } }
+        }
+        controller.start()
+        controllerConnectionChanged(controller.isConnected)
+        // Devices without a setup sequence of their own get their lights straight away.
+        if controller.isConnected { refreshLEDs() }
+    }
+
+    /// Settings picked another controller or MIDI device: let go of the old one and start the new one.
+    private func switchController() {
+        cancelLearning()
+        controller.stop()
+        controller = MixerCore.makeController(settings)
+        startController()
+    }
+
+    // MARK: MIDI learn
+
+    /// The next control moved on the device is assigned to `target`.
+    func startLearning(_ target: LearnTarget) {
+        guard let learner = controller as? MIDILearnDriver else { return }
+        learner.learning = target
+        learning = target
+    }
+
+    func cancelLearning() {
+        (controller as? MIDILearnDriver)?.learning = nil
+        learning = nil
+    }
+
+    func clearBinding(_ target: LearnTarget) {
+        settings.midiBindings[target.key] = nil
+    }
+
+    func clearAllBindings() {
+        cancelLearning()
+        settings.midiBindings = [:]
+    }
+
+    private func learned(_ target: LearnTarget, _ binding: MIDIBinding) {
+        // One control does one thing: drop any other assignment of the same control.
+        for (key, existing) in settings.midiBindings where existing == binding && key != target.key {
+            settings.midiBindings[key] = nil
+        }
+        settings.midiBindings[target.key] = binding
+        learning = nil
+        osd("MIDI", title: target.label, value: binding.summary)
+    }
 
     private func controllerConnectionChanged(_ connected: Bool) {
         // The driver initialises the device itself, then asks for the lights through onNeedsLights.

@@ -1,20 +1,28 @@
 import CoreMIDI
 import Foundation
 
-enum ControllerEvent {
-    case fader(index: Int, value: Int)
-    case topButton(index: Int, pressed: Bool)
-    case bottomButton(index: Int, pressed: Bool)
-    case sideMute(pressed: Bool)
-    case sideSolo(pressed: Bool)
-    case seekKnob(index: Int, value: Int)
-    case speedKnob(index: Int, value: Int)
+/// One incoming MIDI message, already split into its parts.
+struct MIDIMessage {
+    enum Kind { case controlChange, noteOn, noteOff, pitchBend }
+    let kind: Kind
+    /// Zero-based MIDI channel (0 = channel 1).
+    let channel: UInt8
+    /// Controller or note number; 0 for pitch bend.
+    let number: UInt8
+    /// 0…127, or 0…16383 for pitch bend.
+    let value: Int
 }
 
-/// Talks to the Launch Control XL over Core MIDI. Callbacks arrive on the main thread.
+/// Connects to one MIDI device over Core MIDI and passes on its messages. Device-neutral: drivers
+/// decide what the messages mean. Callbacks arrive on the main thread.
 final class MIDIController {
-    var onEvent: ((ControllerEvent) -> Void)?
+    var onMessage: ((MIDIMessage) -> Void)?
     var onConnectionChange: ((Bool) -> Void)?
+
+    /// Picks the device by its display name.
+    private let matches: (String) -> Bool
+    /// Devices that need lights sent back count as connected only with an output too.
+    private let needsOutput: Bool
 
     private var client = MIDIClientRef()
     private var inPort = MIDIPortRef()
@@ -22,8 +30,26 @@ final class MIDIController {
     private var source: MIDIEndpointRef = 0
     private var destination: MIDIEndpointRef = 0
     private(set) var isConnected = false
+    private var started = false
+
+    init(needsOutput: Bool, matching matches: @escaping (String) -> Bool) {
+        self.needsOutput = needsOutput
+        self.matches = matches
+    }
+
+    /// Display names of every MIDI input device currently available.
+    static func sourceNames() -> [String] {
+        (0..<MIDIGetNumberOfSources()).compactMap { i in
+            let endpoint = MIDIGetSource(i)
+            var offline: Int32 = 0
+            MIDIObjectGetIntegerProperty(endpoint, kMIDIPropertyOffline, &offline)
+            return offline == 0 ? displayName(endpoint) : nil
+        }
+    }
 
     func start() {
+        guard !started else { return }
+        started = true
         var status = MIDIClientCreateWithBlock("LCX Mixer" as CFString, &client) { [weak self] _ in
             DispatchQueue.main.async { self?.rescan() }
         }
@@ -37,7 +63,23 @@ final class MIDIController {
         rescan()
     }
 
+    /// Disconnects and releases the MIDI ports (used when switching controllers).
+    func stop() {
+        guard started else { return }
+        started = false
+        onMessage = nil
+        onConnectionChange = nil
+        if source != 0 { MIDIPortDisconnectSource(inPort, source) }
+        source = 0
+        destination = 0
+        isConnected = false
+        MIDIPortDispose(inPort)
+        MIDIPortDispose(outPort)
+        MIDIClientDispose(client)
+    }
+
     func rescan() {
+        guard started else { return }
         let newSource = findEndpoint(count: MIDIGetNumberOfSources(), get: MIDIGetSource)
         let newDest = findEndpoint(count: MIDIGetNumberOfDestinations(), get: MIDIGetDestination)
         let wasConnected = isConnected
@@ -48,7 +90,7 @@ final class MIDIController {
         }
         let destChanged = newDest != destination
         destination = newDest
-        isConnected = source != 0 && destination != 0
+        isConnected = source != 0 && (!needsOutput || destination != 0)
         if isConnected != wasConnected || (isConnected && destChanged) {
             log("Controller", isConnected ? "connected" : "disconnected")
             onConnectionChange?(isConnected)
@@ -73,14 +115,14 @@ final class MIDIController {
             var offline: Int32 = 0
             MIDIObjectGetIntegerProperty(endpoint, kMIDIPropertyOffline, &offline)
             if offline != 0 { continue }
-            if let name = displayName(endpoint), name.localizedCaseInsensitiveContains("Launch Control XL") {
+            if let name = Self.displayName(endpoint), matches(name) {
                 return endpoint
             }
         }
         return 0
     }
 
-    private func displayName(_ object: MIDIObjectRef) -> String? {
+    private static func displayName(_ object: MIDIObjectRef) -> String? {
         var value: Unmanaged<CFString>?
         guard MIDIObjectGetStringProperty(object, kMIDIPropertyDisplayName, &value) == noErr,
               let string = value?.takeRetainedValue() else { return nil }
@@ -88,19 +130,19 @@ final class MIDIController {
     }
 
     private func handle(_ list: UnsafePointer<MIDIPacketList>) {
-        var events: [ControllerEvent] = []
+        var messages: [MIDIMessage] = []
         for packet in list.unsafeSequence() {
             let length = Int(packet.pointee.length)
             let bytes: [UInt8] = withUnsafeBytes(of: packet.pointee.data) { Array($0.prefix(length)) }
-            parse(bytes, into: &events)
+            Self.parse(bytes, into: &messages)
         }
-        guard !events.isEmpty else { return }
+        guard !messages.isEmpty else { return }
         DispatchQueue.main.async { [weak self] in
-            for event in events { self?.onEvent?(event) }
+            for message in messages { self?.onMessage?(message) }
         }
     }
 
-    private func parse(_ bytes: [UInt8], into events: inout [ControllerEvent]) {
+    private static func parse(_ bytes: [UInt8], into messages: inout [MIDIMessage]) {
         var i = 0
         while i < bytes.count {
             let status = bytes[i]
@@ -111,29 +153,19 @@ final class MIDIController {
             }
             guard status & 0x80 != 0, i + 2 < bytes.count else { i += 1; continue }
             let type = status & 0xF0
+            let channel = status & 0x0F
             let d1 = bytes[i + 1]
             let d2 = bytes[i + 2]
             i += 3
             switch type {
             case 0xB0:
-                if let idx = LCXL.faderCCs.firstIndex(of: d1) {
-                    events.append(.fader(index: idx, value: Int(d2)))
-                } else if let idx = LCXL.seekKnobCCs.firstIndex(of: d1) {
-                    events.append(.seekKnob(index: idx, value: Int(d2)))
-                } else if let idx = LCXL.speedKnobCCs.firstIndex(of: d1) {
-                    events.append(.speedKnob(index: idx, value: Int(d2)))
-                }
-            case 0x90, 0x80:
-                let pressed = type == 0x90 && d2 > 0
-                if let idx = LCXL.topButtonNotes.firstIndex(of: d1) {
-                    events.append(.topButton(index: idx, pressed: pressed))
-                } else if let idx = LCXL.bottomButtonNotes.firstIndex(of: d1) {
-                    events.append(.bottomButton(index: idx, pressed: pressed))
-                } else if d1 == LCXL.muteNote {
-                    events.append(.sideMute(pressed: pressed))
-                } else if d1 == LCXL.soloNote {
-                    events.append(.sideSolo(pressed: pressed))
-                }
+                messages.append(MIDIMessage(kind: .controlChange, channel: channel, number: d1, value: Int(d2)))
+            case 0x90:
+                messages.append(MIDIMessage(kind: d2 > 0 ? .noteOn : .noteOff, channel: channel, number: d1, value: Int(d2)))
+            case 0x80:
+                messages.append(MIDIMessage(kind: .noteOff, channel: channel, number: d1, value: Int(d2)))
+            case 0xE0:
+                messages.append(MIDIMessage(kind: .pitchBend, channel: channel, number: 0, value: Int(d1) | Int(d2) << 7))
             default:
                 break
             }

@@ -51,4 +51,6 @@ protocol ControllerDriver: AnyObject {
     func show(_ lights: ControllerLights)
     /// Turns every light off (used when the app quits).
     func clearLights()
+    /// Lets go of the device (used when switching to another controller).
+    func stop()
 }

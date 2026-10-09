@@ -12,6 +12,8 @@ final class OSDController {
         model.message = message
         let panel = self.panel ?? makePanel()
         self.panel = panel
+        let scale = AppSettings.shared.textSize.scale
+        panel.setContentSize(NSSize(width: OSDView.width * scale, height: OSDView.height * scale))
         position(panel, near: message.screenPoint)
         if !panel.isVisible {
             panel.alphaValue = 0
@@ -43,7 +45,7 @@ final class OSDController {
 
     private func makePanel() -> NSPanel {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 56),
+            contentRect: NSRect(x: 0, y: 0, width: OSDView.width, height: OSDView.height),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -54,7 +56,7 @@ final class OSDController {
         panel.level = .statusBar
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        let host = NSHostingView(rootView: OSDView(model: model))
+        let host = NSHostingView(rootView: ScaledRoot(settings: AppSettings.shared) { OSDView(model: self.model) })
         host.frame = panel.contentView?.bounds ?? .zero
         host.autoresizingMask = [.width, .height]
         panel.contentView = host
@@ -75,35 +77,38 @@ final class OSDModel: ObservableObject {
 }
 
 private struct OSDView: View {
+    static let width: CGFloat = 460
+    static let height: CGFloat = 56
     @ObservedObject var model: OSDModel
+    @Environment(\.uiScale) private var scale
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 10 * scale) {
             if let icon = model.message.icon {
                 Image(nsImage: icon)
                     .resizable()
                     .interpolation(.high)
-                    .frame(width: 24, height: 24)
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .frame(width: 24 * scale, height: 24 * scale)
+                    .clipShape(RoundedRectangle(cornerRadius: 5 * scale))
             }
             Text(model.message.channel)
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
+                .scaledFont(13, weight: .bold, design: .rounded)
+                .padding(.horizontal, 8 * scale)
+                .padding(.vertical, 3 * scale)
                 .background(Capsule().fill(Color.primary.opacity(0.12)))
             Text(model.message.title)
-                .font(.system(size: 14, weight: .semibold))
+                .scaledFont(14, weight: .semibold)
                 .lineLimit(1)
                 .truncationMode(.tail)
-            Spacer(minLength: 8)
+            Spacer(minLength: 8 * scale)
             Text(model.message.value)
-                .font(.system(size: 14, weight: .medium).monospacedDigit())
+                .scaledFont(14, weight: .medium, monospacedDigit: true)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .fixedSize()
         }
-        .padding(.horizontal, 16)
-        .frame(width: 460, height: 56)
+        .padding(.horizontal, 16 * scale)
+        .frame(width: Self.width * scale, height: Self.height * scale)
         .background(.regularMaterial, in: Capsule())
     }
 }
