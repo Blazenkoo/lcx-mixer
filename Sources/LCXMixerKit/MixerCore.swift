@@ -12,6 +12,8 @@ final class LevelStore: ObservableObject {
 }
 
 /// The single source of truth: sources, channels, soft takeover, master mode, controller and Chrome.
+/// Tests drive it through a few entry points that are internal rather than private: `handleTabs`,
+/// `handle(_:)`, `loadLayout`, `applyMuteList`, `startController` and `refreshLEDs`.
 @MainActor
 final class MixerCore: ObservableObject {
     static let channelCount = 8
@@ -101,11 +103,16 @@ final class MixerCore: ObservableObject {
     private var restore: [Int: SavedSlot] = [:]
     private var lastSavedLayout: Data?
 
-    init(settings: AppSettings) {
+    /// Where the channel layout is saved between launches.
+    private let layoutStore: UserDefaults
+
+    /// The app passes only `settings`; tests also pass a stand-in controller and a throwaway store.
+    init(settings: AppSettings, controller: ControllerDriver? = nil, layoutStore: UserDefaults = .standard) {
         self.settings = settings
+        self.layoutStore = layoutStore
         let engine = AudioEngine()
         self.engine = engine
-        self.controller = MixerCore.makeController(settings)
+        self.controller = controller ?? MixerCore.makeController(settings)
         self.native = NativeAppProvider(settings: settings, engine: engine)
     }
 
@@ -514,8 +521,8 @@ final class MixerCore: ObservableObject {
     // MARK: - Channel layout across restarts
 
     /// Loads the layout saved before the app last quit, and holds those channels for a short while.
-    private func loadLayout() {
-        guard let data = UserDefaults.standard.data(forKey: Self.layoutKey),
+    func loadLayout() {
+        guard let data = layoutStore.data(forKey: Self.layoutKey),
               let slots = try? JSONDecoder().decode([SavedSlot?].self, from: data) else { return }
         lastSavedLayout = data
         for (ch, slot) in slots.enumerated() where ch < Self.channelCount {
@@ -538,7 +545,7 @@ final class MixerCore: ObservableObject {
         }
         guard let data = try? JSONEncoder().encode(slots), data != lastSavedLayout else { return }
         lastSavedLayout = data
-        UserDefaults.standard.set(data, forKey: Self.layoutKey)
+        layoutStore.set(data, forKey: Self.layoutKey)
     }
 
     /// A tab must also be on the same website, so a reused tab number can't take another site's channel.
@@ -740,7 +747,7 @@ final class MixerCore: ObservableObject {
         }
     }
 
-    private func startController() {
+    func startController() {
         controllerName = controller.displayName
         controller.onAction = { [weak self] action in MainActor.assumeIsolated { self?.handle(action) } }
         controller.onConnectionChange = { [weak self] connected in MainActor.assumeIsolated { self?.controllerConnectionChanged(connected) } }
@@ -802,7 +809,7 @@ final class MixerCore: ObservableObject {
         for i in 0..<MixerCore.channelCount { faders[i].position = nil }
     }
 
-    private func handle(_ action: ControllerAction) {
+    func handle(_ action: ControllerAction) {
         switch action {
         case let .fader(ch, p):
             guard ch < MixerCore.channelCount else { return }
@@ -1089,7 +1096,7 @@ final class MixerCore: ObservableObject {
     }
 
     /// Works out what every light should show and hands it to the controller driver.
-    private func refreshLEDs() {
+    func refreshLEDs() {
         guard controllerConnected else { return }
         let now = Date()
         var lights = ControllerLights(channels: [])
@@ -1187,7 +1194,7 @@ final class MixerCore: ObservableObject {
     }
 
     /// Applies a changed mute list to sources that are already playing.
-    private func applyMuteList() {
+    func applyMuteList() {
         for (id, s) in sources where !settings.isIgnored(listKeys(s)) {
             let listed = settings.isMuteListed(listKeys(s))
             let muted = listMuted.contains(id)
@@ -1257,7 +1264,7 @@ final class MixerCore: ObservableObject {
     }
 
     /// Merges one browser connection's tab list into the mixer's sources.
-    private func handleTabs(_ tabs: [TabReport], from connection: BrowserConnection) {
+    func handleTabs(_ tabs: [TabReport], from connection: BrowserConnection) {
         var seen = Set<String>()
         let now = Date()
         for t in tabs {

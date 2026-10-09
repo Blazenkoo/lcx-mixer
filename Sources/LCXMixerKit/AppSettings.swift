@@ -57,7 +57,7 @@ enum ControllerKind: String, CaseIterable, Identifiable {
 
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
 
     @Published var masterMode: Bool { didSet { defaults.set(masterMode, forKey: "masterMode") } }
     @Published var launchAtLogin: Bool { didSet { defaults.set(launchAtLogin, forKey: "launchAtLogin"); applyLaunchAtLogin() } }
@@ -103,7 +103,9 @@ final class AppSettings: ObservableObject {
         "com.apple.notificationcenterui",
     ]
 
-    private init() {
+    /// The app uses `shared`; tests pass a throwaway store.
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         defaults.register(defaults: [
             "masterMode": false,
             "launchAtLogin": true,

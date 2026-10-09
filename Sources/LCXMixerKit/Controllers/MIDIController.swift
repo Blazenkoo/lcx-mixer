@@ -142,7 +142,8 @@ final class MIDIController {
         }
     }
 
-    private static func parse(_ bytes: [UInt8], into messages: inout [MIDIMessage]) {
+    /// Splits raw MIDI bytes into messages; SysEx and anything unknown is skipped.
+    static func parse(_ bytes: [UInt8], into messages: inout [MIDIMessage]) {
         var i = 0
         while i < bytes.count {
             let status = bytes[i]

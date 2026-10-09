@@ -5,9 +5,10 @@ let package = Package(
     name: "LCXMixer",
     platforms: [.macOS("14.2")],
     targets: [
-        .executableTarget(
-            name: "LCXMixer",
-            path: "Sources/LCXMixer",
+        // Everything the app does. A library so the tests can import it.
+        .target(
+            name: "LCXMixerKit",
+            path: "Sources/LCXMixerKit",
             linkerSettings: [
                 .linkedFramework("CoreMIDI"),
                 .linkedFramework("CoreAudio"),
@@ -15,6 +16,17 @@ let package = Package(
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("Security"),
             ]
-        )
+        ),
+        // The app itself: only main.swift, which starts LCXMixerKit.
+        .executableTarget(
+            name: "LCXMixer",
+            dependencies: ["LCXMixerKit"],
+            path: "Sources/LCXMixer"
+        ),
+        .testTarget(
+            name: "LCXMixerKitTests",
+            dependencies: ["LCXMixerKit"],
+            path: "Tests/LCXMixerKitTests"
+        ),
     ]
 )

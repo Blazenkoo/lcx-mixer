@@ -52,7 +52,7 @@ final class LaunchControlXLDriver: ControllerDriver {
         midi.stop()
     }
 
-    // MARK: - Private
+    // MARK: - Device handling
 
     private func connectionChanged(_ connected: Bool) {
         sent.removeAll()
@@ -69,7 +69,8 @@ final class LaunchControlXLDriver: ControllerDriver {
     }
 
     /// Factory Template 1 map. The MIDI channel isn't checked, as before.
-    private func handle(_ m: MIDIMessage) {
+    /// Internal rather than private so tests can feed it messages.
+    func handle(_ m: MIDIMessage) {
         switch m.kind {
         case .controlChange:
             let p = Float(m.value) / 127
@@ -96,11 +97,11 @@ final class LaunchControlXLDriver: ControllerDriver {
         }
     }
 
-    private static func sideColor(_ c: LightColor) -> LCXL.Color {
+    static func sideColor(_ c: LightColor) -> LCXL.Color {
         c == .off ? .off : .yellow
     }
 
-    private static func color(_ c: LightColor) -> LCXL.Color {
+    static func color(_ c: LightColor) -> LCXL.Color {
         switch c {
         case .off: return .off
         case .green: return .green

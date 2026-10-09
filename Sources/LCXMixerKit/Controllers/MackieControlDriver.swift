@@ -98,7 +98,7 @@ final class MackieControlDriver: ControllerDriver {
         midi.stop()
     }
 
-    // MARK: - Private
+    // MARK: - Device handling
 
     private func forgetSent() {
         sentNotes.removeAll()
@@ -119,7 +119,8 @@ final class MackieControlDriver: ControllerDriver {
         }
     }
 
-    private func handle(_ m: MIDIMessage) {
+    /// Internal rather than private so tests can feed it messages.
+    func handle(_ m: MIDIMessage) {
         switch m.kind {
         case .pitchBend:
             let ch = Int(m.channel)
@@ -156,30 +157,35 @@ final class MackieControlDriver: ControllerDriver {
         }
     }
 
-    /// One row of the scribble strips: 7 characters per channel, the last one a gap between strips.
     private func sendRow(_ row: Int, _ texts: [String]) {
-        var line = ""
-        for i in 0..<8 {
-            let text = i < texts.count ? Self.ascii(texts[i]) : ""
-            line += String(text.prefix(6)).padding(toLength: 7, withPad: " ", startingAt: 0)
-        }
+        let line = Self.stripLine(texts)
         guard sentRows[row] != line else { return }
         midi.send(Self.textMessage(offset: UInt8(row * 56), line))
         sentRows[row] = line
     }
 
-    private static func textMessage(offset: UInt8, _ text: String) -> [UInt8] {
+    /// One row of the scribble strips: 7 characters per channel, the last one a gap between strips.
+    static func stripLine(_ texts: [String]) -> String {
+        var line = ""
+        for i in 0..<8 {
+            let text = i < texts.count ? ascii(texts[i]) : ""
+            line += String(text.prefix(6)).padding(toLength: 7, withPad: " ", startingAt: 0)
+        }
+        return line
+    }
+
+    static func textMessage(offset: UInt8, _ text: String) -> [UInt8] {
         [0xF0, 0x00, 0x00, 0x66, MCU.deviceID, 0x12, offset] + text.utf8.map { $0 & 0x7F } + [0xF7]
     }
 
     /// The displays show plain ASCII: accents are dropped, anything else becomes a space.
-    private static func ascii(_ s: String) -> String {
+    static func ascii(_ s: String) -> String {
         let folded = s.folding(options: [.diacriticInsensitive, .widthInsensitive], locale: .init(identifier: "en_US"))
         return String(folded.unicodeScalars.map { $0.isASCII && $0.value >= 32 ? Character($0) : " " })
     }
 
     /// Button LEDs are one colour: on, blinking or off.
-    private static func led(_ c: LightColor) -> UInt8 {
+    static func led(_ c: LightColor) -> UInt8 {
         switch c {
         case .off, .greenDim, .amber, .redDim: return 0x00
         case .green, .red, .yellow: return 0x7F
@@ -188,7 +194,7 @@ final class MackieControlDriver: ControllerDriver {
     }
 
     /// X-Touch strip colours: 0 off, 1 red, 2 green, 3 yellow, 7 white.
-    private static func stripColour(_ c: ChannelLights) -> UInt8 {
+    static func stripColour(_ c: ChannelLights) -> UInt8 {
         if c.name.isEmpty { return 0 }
         if c.muteButton == .red || c.muteButton == .redBlink { return 1 }
         switch c.playButton {
