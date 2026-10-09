@@ -1,5 +1,6 @@
 import CoreAudio
 import Foundation
+import os
 
 /// Mutes the Mac's current microphone (default input device) for every app at once.
 /// Uses the device's own mute where it has one; otherwise turns its input volume to zero and back.
@@ -96,7 +97,9 @@ final class Microphone {
         if muted { mutedByApp.insert(uid) } else { mutedByApp.remove(uid) }
         lastSet = (uid, muted)
         changedAt = Date()
-        log("Microphone", muted ? "muted" : "unmuted", "via", mutable.isEmpty ? "input volume" : "mute (\(mutable.count) elements)")
+        let state = muted ? "muted" : "unmuted"
+        let how = mutable.isEmpty ? "input volume" : "mute (\(mutable.count) elements)"
+        Log.audio.info("Microphone \(state, privacy: .public) via \(how, privacy: .public)")
 
         if !mutable.isEmpty {
             for e in mutable { Self.set(d, kAudioDevicePropertyMute, e, UInt32(muted ? 1 : 0)) }
@@ -151,6 +154,6 @@ final class Microphone {
         var addr = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeInput, mElement: element)
         var v = value
         let status = AudioObjectSetPropertyData(d, &addr, 0, nil, UInt32(MemoryLayout<T>.size), &v)
-        if status != noErr { log("Microphone property change failed", status) }
+        if status != noErr { Log.audio.error("Microphone property change failed: \(status)") }
     }
 }

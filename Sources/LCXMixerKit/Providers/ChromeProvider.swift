@@ -1,4 +1,5 @@
 import AppKit
+import os
 
 /// One audible or media tab, as the extension reported it.
 struct TabReport {
@@ -102,7 +103,8 @@ final class ChromeProvider {
         if connected {
             let found = pid > 0 ? Browsers.identify(bridgePID: pid) : nil
             connections[id] = BrowserConnection(id: id, browser: found?.0, browserPID: found?.1)
-            log("Browser connected:", connections[id]?.name ?? "?")
+            let name = connections[id]?.name ?? "?"
+            Log.browser.info("Browser connected: \(name, privacy: .public)")
             bridge.send(to: id, ["type": "requestSnapshot"])
         } else {
             connections[id] = nil

@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Local socket server the native-messaging bridges connect to. Each browser (and each browser
 /// profile) runs its own bridge process, so several connections can be open at once.
@@ -48,7 +49,7 @@ final class ChromeBridgeServer {
         let path = AppPaths.socketPath
         unlink(path)
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { log("socket() failed"); return }
+        guard fd >= 0 else { Log.browser.error("socket() failed"); return }
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
@@ -68,7 +69,8 @@ final class ChromeBridgeServer {
         umask(previousMask)
         chmod(path, 0o600)
         guard bound == 0, Darwin.listen(fd, 8) == 0 else {
-            log("bind/listen failed", errno)
+            let code = errno
+            Log.browser.error("bind/listen failed: \(code)")
             close(fd)
             return
         }
@@ -77,7 +79,7 @@ final class ChromeBridgeServer {
         source.setEventHandler { [weak self] in self?.acceptClient() }
         source.resume()
         acceptSource = source
-        log("Bridge listening at", path)
+        Log.browser.info("Bridge listening at \(path)") // private: the path holds your user name
     }
 
     private func acceptClient() {

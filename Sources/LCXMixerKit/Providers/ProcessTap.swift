@@ -1,6 +1,7 @@
 import AudioToolbox
 import CoreAudio
 import Foundation
+import os
 
 /// Shared between the main thread (gain, level reads) and the real-time audio thread.
 final class TapRenderState {
@@ -156,6 +157,8 @@ final class ProcessTap {
     /// Starts the tap. With `seamless`, the app's own sound keeps playing until ours flows, then
     /// the two crossfade; if macOS doesn't allow that, it falls back to switching straight over.
     func start(outputDevice: AudioObjectID, seamless: Bool = true) -> Bool {
+        let marker = Signposts.poi.beginInterval("Tap start")
+        defer { Signposts.poi.endInterval("Tap start", marker) }
         guard let outputUID = CA.deviceUID(outputDevice), !processObjects.isEmpty else { return false }
 
         let description = CATapDescription(stereoMixdownOfProcesses: processObjects)
@@ -168,7 +171,7 @@ final class ProcessTap {
         var tap = AudioObjectID(kAudioObjectUnknown)
         var status = AudioHardwareCreateProcessTap(description, &tap)
         guard status == noErr else {
-            log("Create tap failed", status)
+            Log.audio.error("Create tap failed: \(status)")
             return false
         }
         tapID = tap
@@ -197,7 +200,7 @@ final class ProcessTap {
         var agg = AudioObjectID(kAudioObjectUnknown)
         status = AudioHardwareCreateAggregateDevice(aggregate as CFDictionary, &agg)
         guard status == noErr else {
-            log("Create aggregate failed", status)
+            Log.audio.error("Create aggregate failed: \(status)")
             stop()
             return false
         }
@@ -214,7 +217,7 @@ final class ProcessTap {
             renderState.render(input: input, output: output)
         }
         guard status == noErr, let procID else {
-            log("Create IO proc failed", status)
+            Log.audio.error("Create IO proc failed: \(status)")
             stop()
             return false
         }
@@ -226,7 +229,7 @@ final class ProcessTap {
 
         status = AudioDeviceStart(aggregateID, procID)
         guard status == noErr else {
-            log("Start aggregate failed", status)
+            Log.audio.error("Start aggregate failed: \(status)")
             stop()
             return false
         }
@@ -251,7 +254,7 @@ final class ProcessTap {
                 self.state.handoverTarget.pointee = 1
             } else {
                 // Couldn't mute the original: never leave it doubled. Switch straight over.
-                log("Seamless hand-in failed; switching over directly")
+                Log.audio.info("Seamless hand-in failed; switching over directly")
                 self.state.handoverTarget.pointee = 1
                 self.originalPlaying = false
                 _ = self.setMute(.mutedWhenTapped)
@@ -262,6 +265,8 @@ final class ProcessTap {
     /// Hands the sound back to the app: un-mutes its own sound and fades ours out at the same
     /// moment, then removes the tap. Falls back to an immediate stop.
     func stopSeamlessly() {
+        let marker = Signposts.poi.beginInterval("Tap stop")
+        defer { Signposts.poi.endInterval("Tap stop", marker) }
         guard tapID != kAudioObjectUnknown, !originalPlaying, setMute(.unmuted) else {
             stop()
             return
@@ -286,7 +291,7 @@ final class ProcessTap {
         let status = withUnsafeMutablePointer(to: &object) { ptr in
             AudioObjectSetPropertyData(tapID, &addr, 0, nil, UInt32(MemoryLayout<CATapDescription>.size), ptr)
         }
-        if status != noErr { log("Change tap mute failed", status) }
+        if status != noErr { Log.audio.error("Change tap mute failed: \(status)") }
         return status == noErr
     }
 
@@ -323,6 +328,6 @@ final class ProcessTap {
             raw.storeBytes(of: UInt32(0), toByteOffset: 12 + 4 * i, as: UInt32.self)
         }
         let status = AudioObjectSetPropertyData(aggregateID, &addr, 0, nil, size, raw)
-        if status != noErr { log("Disable input streams failed", status) }
+        if status != noErr { Log.audio.error("Disable input streams failed: \(status)") }
     }
 }

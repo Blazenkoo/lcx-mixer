@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Runs `work` on the main thread, as main-actor code.
 func onMain(_ work: @escaping @MainActor () -> Void) {
@@ -43,7 +44,21 @@ enum AppPaths {
 /// A 0…1 level as a whole percentage, e.g. "71%".
 func percent(_ p: Float) -> String { "\(Int((p * 100).rounded()))%" }
 
-func log(_ items: Any...) {
-    let line = items.map { "\($0)" }.joined(separator: " ")
-    NSLog("[LCXMixer] %@", line)
+/// Where the app logs: Apple's unified log, one category per area. Nothing is written to files of
+/// the app's own. Failures are errors; connections and device changes are info, which macOS keeps
+/// in memory only. Words that could say something about you (paths, page titles) stay private,
+/// so macOS hides them in logs you share. Follow it live with:
+///     log stream --level info --predicate 'subsystem == "org.lcxmixer.app"'
+enum Log {
+    static let subsystem = "org.lcxmixer.app"
+    static let audio = Logger(subsystem: subsystem, category: "audio")
+    static let midi = Logger(subsystem: subsystem, category: "midi")
+    static let browser = Logger(subsystem: subsystem, category: "browser")
+    static let ui = Logger(subsystem: subsystem, category: "ui")
+}
+
+/// Performance markers: named intervals that show up in Instruments under Points of Interest,
+/// so a slowdown points at one part. They cost next to nothing while nobody is recording.
+enum Signposts {
+    static let poi = OSSignposter(subsystem: Log.subsystem, category: .pointsOfInterest)
 }

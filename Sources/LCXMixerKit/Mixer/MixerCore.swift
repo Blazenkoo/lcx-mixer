@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import CoreAudio
+import os
 
 /// Live meter values, kept apart from MixerCore so 15 Hz updates only redraw the meters.
 @MainActor
@@ -168,7 +169,7 @@ final class MixerCore: ObservableObject {
         startController()
 
         engine.onOutputDeviceChange = { [weak self] in self?.outputChanged() }
-        engine.onTapFailure = { id in log("Could not control audio of", id) }
+        engine.onTapFailure = { id in Log.audio.error("Could not control audio of \(id, privacy: .public)") }
 
         permissionStatus = AudioCapturePermission.status()
         outputChanged()
@@ -232,6 +233,8 @@ final class MixerCore: ObservableObject {
     }
 
     private func pollNativeApps() {
+        let marker = Signposts.poi.beginInterval("Native check")
+        defer { Signposts.poi.endInterval("Native check", marker) }
         let snapshot = native.snapshot()
         let running = native.runningKeys()
 
@@ -971,6 +974,8 @@ final class MixerCore: ObservableObject {
     /// Gathers what sits on each channel; LightComposer works out the lights for the driver.
     func refreshLEDs() {
         guard controllerConnected else { return }
+        let marker = Signposts.poi.beginInterval("LED refresh")
+        defer { Signposts.poi.endInterval("LED refresh", marker) }
         let now = Date()
         let channels = (0..<MixerCore.channelCount).map { ch -> LightComposer.Channel in
             if masterActive && ch == 0 { return .master(volume: masterVolume) }
@@ -1094,6 +1099,8 @@ final class MixerCore: ObservableObject {
     /// Merges one browser connection's tab list into the mixer's sources. TabMerger works out the
     /// values; this adds, updates and removes the sources and sends what needs sending.
     func handleTabs(_ tabs: [TabReport], from connection: BrowserConnection) {
+        let marker = Signposts.poi.beginInterval("Tab merge")
+        defer { Signposts.poi.endInterval("Tab merge", marker) }
         var seen = Set<String>()
         let now = Date()
         for t in tabs {

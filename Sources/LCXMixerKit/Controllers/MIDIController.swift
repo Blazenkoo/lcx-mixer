@@ -1,5 +1,6 @@
 import CoreMIDI
 import Foundation
+import os
 
 /// One incoming MIDI message, already split into its parts.
 struct MIDIMessage {
@@ -53,13 +54,13 @@ final class MIDIController {
         var status = MIDIClientCreateWithBlock("LCX Mixer" as CFString, &client) { [weak self] _ in
             DispatchQueue.main.async { self?.rescan() }
         }
-        if status != noErr { log("MIDIClientCreate failed", status) }
+        if status != noErr { Log.midi.error("MIDIClientCreate failed: \(status)") }
         status = MIDIInputPortCreateWithBlock(client, "LCX Mixer In" as CFString, &inPort) { [weak self] list, _ in
             self?.handle(list)
         }
-        if status != noErr { log("MIDIInputPortCreate failed", status) }
+        if status != noErr { Log.midi.error("MIDIInputPortCreate failed: \(status)") }
         status = MIDIOutputPortCreate(client, "LCX Mixer Out" as CFString, &outPort)
-        if status != noErr { log("MIDIOutputPortCreate failed", status) }
+        if status != noErr { Log.midi.error("MIDIOutputPortCreate failed: \(status)") }
         rescan()
     }
 
@@ -92,7 +93,8 @@ final class MIDIController {
         destination = newDest
         isConnected = source != 0 && (!needsOutput || destination != 0)
         if isConnected != wasConnected || (isConnected && destChanged) {
-            log("Controller", isConnected ? "connected" : "disconnected")
+            let state = isConnected ? "connected" : "disconnected"
+            Log.midi.info("Controller \(state, privacy: .public)")
             onConnectionChange?(isConnected)
         }
     }

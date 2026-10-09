@@ -1,5 +1,6 @@
 import Foundation
 import ServiceManagement
+import os
 
 struct GroupRule: Codable, Identifiable, Equatable {
     var id = UUID()
@@ -189,7 +190,8 @@ final class AppSettings: ObservableObject {
                 try SMAppService.mainApp.unregister()
             }
         } catch {
-            log("Launch at login change failed:", error.localizedDescription)
+            let reason = error.localizedDescription
+            Log.ui.error("Launch at login change failed: \(reason, privacy: .public)")
         }
     }
 

@@ -1,6 +1,7 @@
 import AudioToolbox
 import CoreAudio
 import Foundation
+import os
 
 /// Owns one ProcessTap per native source that has been put on a channel.
 @MainActor
@@ -74,7 +75,8 @@ final class AudioEngine {
         let device = CA.defaultOutputDevice()
         guard device != outputDevice else { return }
         outputDevice = device
-        log("Output device changed to", outputName)
+        let name = outputName
+        Log.audio.info("Output device changed to \(name, privacy: .public)")
         // Restart every tap on the new device, keeping its gain.
         for (id, tap) in taps {
             let gain = tap.gain

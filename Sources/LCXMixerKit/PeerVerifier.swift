@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Security
+import os
 
 /// Checks that the process on the other end of a local socket is this same app
 /// (same user, and code-signed with this app's own designated requirement).
@@ -20,7 +21,7 @@ enum PeerVerifier {
         var uid: uid_t = 0
         var gid: gid_t = 0
         guard getpeereid(fd, &uid, &gid) == 0, uid == getuid() else {
-            log("Rejected socket peer: different user")
+            Log.browser.error("Rejected socket peer: different user")
             return false
         }
 
@@ -28,23 +29,23 @@ enum PeerVerifier {
         var token = audit_token_t()
         var length = socklen_t(MemoryLayout<audit_token_t>.size)
         guard getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, &token, &length) == 0 else {
-            log("Rejected socket peer: no audit token")
+            Log.browser.error("Rejected socket peer: no audit token")
             return false
         }
         guard let requirement = ownRequirement else {
-            log("Rejected socket peer: own signature unavailable")
+            Log.browser.error("Rejected socket peer: own signature unavailable")
             return false
         }
         let tokenData = withUnsafeBytes(of: &token) { Data($0) } as CFData
         let attributes = [kSecGuestAttributeAudit as String: tokenData] as CFDictionary
         var code: SecCode?
         guard SecCodeCopyGuestWithAttributes(nil, attributes, [], &code) == errSecSuccess, let code else {
-            log("Rejected socket peer: unknown process")
+            Log.browser.error("Rejected socket peer: unknown process")
             return false
         }
         let status = SecCodeCheckValidity(code, [], requirement)
         if status != errSecSuccess {
-            log("Rejected socket peer: signature mismatch", status)
+            Log.browser.error("Rejected socket peer: signature mismatch: \(status)")
             return false
         }
         return true
