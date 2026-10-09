@@ -57,14 +57,9 @@
     if (!stopped && e.target instanceof HTMLMediaElement) { track(e.target); lastPlayed = e.target; }
   };
   document.addEventListener('play', onDocPlay, true);
-  handed.forEach((el) => track(el));
 
   const scan = () => document.querySelectorAll('video, audio').forEach(track);
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', scan);
-  } else {
-    scan();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scan);
   const scanTimer = setInterval(() => { scan(); report(); }, 2000);
 
   function ytPlayer() {
@@ -408,9 +403,24 @@
   document.addEventListener('lcxmixer:shutdown', function onShutdown() {
     stopped = true;
     window.__lcxMixerMedia = [...media];
+    if (window.top === window) console.debug('[LCX Mixer] page script', BUILD, `handing over ${media.size} player(s)`);
     clearInterval(scanTimer);
     document.removeEventListener(CMD_EVENT, onCmd);
     document.removeEventListener('play', onDocPlay, true);
     document.removeEventListener('lcxmixer:shutdown', onShutdown);
   });
+
+  // Start-up work runs last, once every declaration above exists: tracking a player sends a
+  // report, which needs all of them. (Doing this earlier crashed every take-over after an update.)
+  try {
+    handed.forEach((el) => track(el));
+    if (document.readyState !== 'loading') scan();
+    if (window.top === window) {
+      // console.debug: some sites (Spotify) wrap the console and drop info-level messages.
+      console.debug('[LCX Mixer] page script', BUILD, handed.length ? `took over ${handed.length} player(s)` : 'started fresh',
+        { attached: handed.filter((el) => el.isConnected).length, playing: handed.filter((el) => !el.paused).length });
+    }
+  } catch (e) {
+    console.error('[LCX Mixer] page script failed to start', BUILD, e);
+  }
 })();

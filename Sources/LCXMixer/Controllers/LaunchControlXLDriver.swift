@@ -83,7 +83,7 @@ final class LaunchControlXLDriver: ControllerDriver {
         case .noteOn, .noteOff:
             let pressed = m.kind == .noteOn
             if let ch = LCXL.topButtonNotes.firstIndex(of: m.number) {
-                if pressed { onAction?(.playPause(channel: ch)) }
+                onAction?(.playButton(channel: ch, pressed: pressed))
             } else if let ch = LCXL.bottomButtonNotes.firstIndex(of: m.number) {
                 onAction?(.muteButton(channel: ch, pressed: pressed))
             } else if m.number == LCXL.muteNote {
@@ -106,6 +106,7 @@ final class LaunchControlXLDriver: ControllerDriver {
         case .green: return .green
         case .greenDim: return .greenLow
         case .amber: return .amber
+        case .amberBlink: return .amberFlash
         case .red: return .red
         case .redDim: return .redLow
         case .yellow: return .yellow

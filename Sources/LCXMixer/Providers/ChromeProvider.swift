@@ -20,6 +20,8 @@ struct TabReport {
     var favicon: String
     /// Chrome window frame in screen points, top-left origin.
     var windowBounds: CGRect?
+    /// The extension couldn't reconnect to the tab's page; only a reload brings it back.
+    var needsReload = false
 }
 
 /// One open connection from the extension in a browser (one per browser profile).
@@ -70,6 +72,8 @@ final class ChromeProvider {
     }
 
     func togglePlay(_ connection: Int32, tabId: Int) { bridge.send(to: connection, ["type": "togglePlay", "tabId": tabId]) }
+
+    func reloadTab(_ connection: Int32, tabId: Int) { bridge.send(to: connection, ["type": "reloadTab", "tabId": tabId]) }
 
     func jumpLive(_ connection: Int32, tabId: Int) { bridge.send(to: connection, ["type": "jumpLive", "tabId": tabId]) }
 
@@ -145,7 +149,8 @@ final class ChromeProvider {
             reportedVolume: (t["volume"] as? NSNumber)?.floatValue,
             volumeIsPosition: t["volumeIsPosition"] as? Bool ?? false,
             favicon: t["favIconUrl"] as? String ?? "",
-            windowBounds: windowBounds
+            windowBounds: windowBounds,
+            needsReload: t["needsReload"] as? Bool ?? false
         )
     }
 }

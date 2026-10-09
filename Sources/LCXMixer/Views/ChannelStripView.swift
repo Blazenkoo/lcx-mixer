@@ -120,7 +120,16 @@ struct ChannelStripView: View {
         .accessibilityAction { core.focus(s.id) }
 
         StatusBadge(status: status)
-        if s.kind == .tab && !s.canSetVolume {
+        if s.kind == .tab && s.needsReload {
+            // The extension lost this page (usually after an update): a reload brings it back.
+            Button { core.reloadTab(s.id) } label: {
+                Label("Reload tab", systemImage: "arrow.clockwise")
+                    .scaledFont(AppText.status, weight: .medium)
+            }
+            .buttonStyle(.link)
+            .foregroundStyle(Color.warningText)
+            .help("Reload this tab to reconnect it. On the controller, hold its play button for 3 seconds.")
+        } else if s.kind == .tab && !s.canSetVolume {
             Text("Mute only").scaledFont(AppText.status, weight: .medium).foregroundStyle(Color.errorText)
         }
 

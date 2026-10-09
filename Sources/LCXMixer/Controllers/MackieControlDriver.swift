@@ -143,7 +143,7 @@ final class MackieControlDriver: ControllerDriver {
                     if let lights = lastLights { show(lights) }
                 }
             } else if (MCU.select..<MCU.select + 8).contains(n) {
-                if pressed { onAction?(.playPause(channel: Int(n - MCU.select))) }
+                onAction?(.playButton(channel: Int(n - MCU.select), pressed: pressed))
             } else if (MCU.mute..<MCU.mute + 8).contains(n) {
                 onAction?(.muteButton(channel: Int(n - MCU.mute), pressed: pressed))
             } else if n == MCU.f1 {
@@ -183,7 +183,7 @@ final class MackieControlDriver: ControllerDriver {
         switch c {
         case .off, .greenDim, .amber, .redDim: return 0x00
         case .green, .red, .yellow: return 0x7F
-        case .greenBlink, .redBlink: return 0x01
+        case .greenBlink, .redBlink, .amberBlink: return 0x01
         }
     }
 

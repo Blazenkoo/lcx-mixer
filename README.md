@@ -65,7 +65,7 @@ In each browser you use, open its extensions page (`chrome://extensions`, `edge:
 | Control | Action |
 | --- | --- |
 | Fader | Volume. If the fader is below the current level it takes over immediately; if it's above, move it down to take over. |
-| Top button row | Play / pause (browser tabs). Double-press on a Twitch channel jumps to live. |
+| Top button row | Play / pause (browser tabs). Double-press on a Twitch channel jumps to live. Hold for 3 seconds to reload the tab. |
 | Bottom button row | Mute. Hold for 1 second to unassign the channel. |
 | Side **Mute** button | Mute / unmute all media playback: what you hear |
 | Side **Solo** button | Mute / unmute your microphone: what others hear from you |
@@ -106,7 +106,7 @@ LCX Mixer has **no network attack surface**: there is no server or web app, and 
 
 ## Known limitations
 
-- **Chrome tab meters** show an activity pulse, not real levels. macOS can't separate the sound of individual tabs.
+- **Browser tab meters** show activity, not real levels: drops land on the bar and ripple outward. macOS can't separate the sound of individual tabs, so the tab meter is deliberately unlike a real one.
 - **Twitch live streams:** "pause" silences the tab and keeps the stream live. A background tab can't reliably resume a paused live stream.
 - **Spotify** applies its own loudness curve to its volume slider, so the bottom half of the fader is gentler than on other sources.
 - **Microphone mute:** some audio interfaces, such as the Focusrite Scarlett range, don't let apps mute their inputs. The pop-up says so when you press Solo.

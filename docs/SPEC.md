@@ -137,7 +137,7 @@ Each of the 8 columns is one channel. The controller stays on **Factory Template
 | Control | Action | Notes |
 | --- | --- | --- |
 | Fader (per channel) | Volume, 0–100% | Soft takeover; volume curve so the lower half is usable |
-| Top button row, Track Focus (per channel) | Play / pause | Browser tabs only; does nothing on native apps (LED dim green). Double-press on Twitch jumps to live |
+| Top button row, Track Focus (per channel) | Play / pause | Browser tabs only; does nothing on native apps (LED dim green). Acts on release. Double-press on Twitch jumps to live. **Hold 3 s = reload the tab** (a hint shows after 1 s) |
 | Bottom button row, Track Control (per channel) | Mute / unmute | Works on every source. **Hold 1 s = unassign the channel** |
 | Side button **Mute** | Mute / unmute all media playback: what you hear | Restores each channel's own mute state afterwards. LED yellow while on |
 | Side button **Solo** | Mute / unmute the microphone: what others hear from you | Mutes the Mac's current input device for every app at once. LED yellow while on |
@@ -210,7 +210,7 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 3. **Name and detail:** short name ("Spotify", "League", "Discord") plus one truncated line of detail (page title, or "Client + game").
 4. **Status:** glyph (play, pause or mute) plus a coloured dot, as in [Status colours](#status-colours).
 5. **Volume:** a vertical bar with the percentage. A ghost marker shows where the physical fader sits. When soft takeover is waiting, a short hint replaces the percentage: "Move fader down".
-6. **Level meter:** a real meter for native apps. For browser tabs, macOS can't separate each tab's sound, so it shows an activity pulse while the tab is audible instead.
+6. **Level meter:** a real meter for native apps. For browser tabs, macOS can't separate each tab's sound, so while a tab is audible the bar shows activity instead, made to look unlike a level: neutral drops land at random spots and ripple outward both ways, fading as they spread. With Reduce Motion, each drop glows and fades in place.
 7. **Buttons:** play/pause (tabs only), mute, and unassign (×).
 
 **Interactions**
@@ -280,6 +280,7 @@ The controller LEDs, the window and the menu-bar panel use the same four colours
 | Native app, unmuted | Green | Speaker | Dim green | Off |
 | Muted | Red | Muted speaker | As before muting | Red |
 | Mute only (site without volume control) | as above | as above + "Mute only" label | As above | Dim red when unmuted |
+| Tab needs a reload (lost its connection to the extension) | as above | "Reload tab" link | Amber, blinking | As above |
 | Master (channel 1, master mode on) | Accent colour | Master icon | Off | Off |
 
 - **All media muted (side Mute):** every occupied channel's bottom LED blinks red, the Mute LED lights, and the menu-bar icon shows its filled variant.
@@ -328,6 +329,7 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 | Output device switched (audio interface ↔ AirPods) | Native sources keep playing on the new device at the same volumes; master mode availability updates |
 | A grouped app opens a new helper process | It joins its group's channel instead of taking a new one |
 | A site changes its page and an adapter breaks | That channel falls back to "Mute only", and the channel names the site that needs an adapter fix |
+| The extension updates while tabs are open | Each open tab's new page script takes over its players without a reload. The extension re-injects into tabs that never report back (twice), and if an audible tab still finds no player within a minute of the update, its channel shows "Reload tab" and its play LED blinks amber: click it, or hold play for 3 s |
 | Audio-capture permission denied | Native apps show in Unassigned as "Permission needed", with a button that opens the right System Settings page. Browser tabs keep working |
 | Incognito tabs | Ignored unless you allow the extension in incognito |
 | Tab moved to another window or screen | Keeps its channel and all controls: the browser keeps the same tab ID when a tab is dragged between windows |
@@ -378,7 +380,12 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [x] Switching controllers; MIDI learn assigns, moves and clears controls; Clear all confirms in its row; Launch Control XL lights come back after switching
 - [x] The mixer window opens on launch and after Quit, but not at login
 - [x] The welcome window, About and the Settings thumbnail show the visual
-- [ ] The visual shows a still frame with Reduce Motion on, and reads well in light mode
+- [x] The visual shows a still frame with Reduce Motion on
+- [ ] The visual reads well in light mode
+- [x] After a rebuild, open Spotify and Twitch tabs keep working without a reload
+- [x] Holding play for 3 s reloads a tab; a short press still plays and pauses
+- [x] Settings sections have clear space between them
+- [ ] Tab activity drops: ripple normally, glow in place with Reduce Motion
 - [ ] Mackie Control on a real surface (X-Touch): faders, motors, buttons, lights, scribble strips
 
 ## Security

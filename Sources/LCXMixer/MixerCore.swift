@@ -77,6 +77,10 @@ final class MixerCore: ObservableObject {
     private var holdTimers: [Int: DispatchWorkItem] = [:]
     private var holdFired = Set<Int>()
     private var lastTopPress: [Int: Date] = [:]
+    /// Holding a channel's play button for 3 s reloads its tab.
+    private var reloadTimers: [Int: DispatchWorkItem] = [:]
+    private var reloadFired = Set<Int>()
+    private var hintTimers: [Int: DispatchWorkItem] = [:]
     private var volumeSentAt: [String: Date] = [:]
     private var muteSentAt: [String: Date] = [:]
     private var pendingTabVolume = Set<String>()
@@ -275,14 +279,13 @@ final class MixerCore: ObservableObject {
 
     private func updateLevels() {
         var values: [String: Float] = [:]
-        // Keep the phase small: a Float of the full timestamp only changes about once a minute.
-        let t = Float(Date().timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1000))
         for (id, s) in sources {
             switch s.kind {
             case .app:
                 values[id] = min(1, native.level(id))
             case .tab:
-                values[id] = s.isAudible && !s.isMuted ? 0.45 + 0.2 * sin(t * 9) + 0.1 * sin(t * 23) : 0
+                // Not a level: just "audible", shown as activity rain.
+                values[id] = s.isAudible && !s.isMuted && !muteAll && !listMuted.contains(id) ? 1 : 0
             }
         }
         if values != levels.values { levels.values = values }
@@ -740,9 +743,9 @@ final class MixerCore: ObservableObject {
         case let .fader(ch, p):
             guard ch < MixerCore.channelCount else { return }
             faderMoved(ch, position: p)
-        case let .playPause(ch):
+        case let .playButton(ch, pressed):
             guard ch < MixerCore.channelCount else { return }
-            topPressed(ch)
+            topButton(ch, pressed: pressed)
         case let .muteButton(ch, pressed):
             guard ch < MixerCore.channelCount else { return }
             bottomButton(ch, pressed: pressed)
@@ -918,6 +921,49 @@ final class MixerCore: ObservableObject {
         }
     }
 
+    /// Play acts on release, so a 3-second hold can reload the tab instead.
+    private func topButton(_ ch: Int, pressed: Bool) {
+        if pressed {
+            reloadFired.remove(ch)
+            reloadTimers[ch]?.cancel()
+            guard let s = source(onChannel: ch), s.kind == .tab else { return }
+            let hint = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, let s = self.source(onChannel: ch) else { return }
+                    self.osd("\(ch + 1)", title: s.displayName, value: "Keep holding to reload the tab", source: s)
+                }
+            }
+            let reload = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, let s = self.source(onChannel: ch) else { return }
+                    self.reloadFired.insert(ch)
+                    self.reloadTimers[ch] = nil
+                    self.reloadTab(s.id)
+                }
+            }
+            reloadTimers[ch] = reload
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: hint)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: reload)
+            // Cancel the hint together with the reload if the button comes up early.
+            hintTimers[ch]?.cancel()
+            hintTimers[ch] = hint
+        } else {
+            hintTimers[ch]?.cancel()
+            hintTimers[ch] = nil
+            reloadTimers[ch]?.cancel()
+            reloadTimers[ch] = nil
+            if reloadFired.remove(ch) != nil { return }
+            topPressed(ch)
+        }
+    }
+
+    /// Reloads a tab, e.g. one that lost its connection to the extension after an update.
+    func reloadTab(_ id: String) {
+        guard let s = sources[id], let tabId = s.tabId, let conn = s.browserConnection else { return }
+        chrome.reloadTab(conn, tabId: tabId)
+        if let ch = channel(of: id) { osd("\(ch + 1)", title: s.displayName, value: "Reloading tab", source: s) }
+    }
+
     private func topPressed(_ ch: Int) {
         guard let s = source(onChannel: ch), s.kind == .tab else { return }
         let now = Date()
@@ -1006,6 +1052,8 @@ final class MixerCore: ObservableObject {
                     c.playButton = .greenDim
                 }
                 if let until = blinkUntil[ch], until > now { c.playButton = .greenBlink }
+                // Lost its connection to the extension: blink, so a 3-second hold of play reloads it.
+                if s.needsReload { c.playButton = .amberBlink; c.detail = "Reload" }
                 if muteAll {
                     c.muteButton = .redBlink
                 } else if s.isMuted {
@@ -1184,6 +1232,7 @@ final class MixerCore: ObservableObject {
                 s.windowBounds = windowBounds
                 s.canSpeed = canSpeed
                 s.canSeek = canSeek
+                s.needsReload = t.needsReload
                 if let speed { s.speed = speed }
                 s.host = host
                 s.icon = icons.icon(for: favicon) { [weak self] image in self?.setIcon(id, image) }
@@ -1204,6 +1253,7 @@ final class MixerCore: ObservableObject {
             s.isPlaying = hasMedia ? playing : audible
             s.canPlayPause = hasMedia
             s.canSetVolume = canVolume
+            s.needsReload = t.needsReload
             s.windowId = windowId
             s.browserConnection = connection.id
             if let windowBounds { s.windowBounds = windowBounds }

@@ -8,10 +8,14 @@ import SwiftUI
 struct SectionHeader: View {
     let title: String
     let description: String?
+    /// The first section sits at the top of the window and needs no extra space above it.
+    let first: Bool
+    @Environment(\.uiScale) private var scale
 
-    init(_ title: String, description: String? = nil) {
+    init(_ title: String, description: String? = nil, first: Bool = false) {
         self.title = title
         self.description = description
+        self.first = first
     }
 
     var body: some View {
@@ -27,6 +31,8 @@ struct SectionHeader: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Extra space above each section, so they're easy to tell apart while scrolling.
+        .padding(.top, first ? 0 : 22 * scale)
         .padding(.bottom, description == nil ? 0 : 6)
     }
 }
@@ -124,6 +130,8 @@ struct SettingsView: View {
 
             Section {
                 SettingsCredits(core: core, openAbout: openAbout)
+            } header: {
+                SectionHeader("About")
             }
         }
         .formStyle(.grouped)
@@ -169,7 +177,7 @@ struct SettingsView: View {
                 MIDILearnTable(settings: settings, core: core)
             }
         } header: {
-            SectionHeader("Controller", description: controllerDescription)
+            SectionHeader("Controller", description: controllerDescription, first: true)
         }
     }
 

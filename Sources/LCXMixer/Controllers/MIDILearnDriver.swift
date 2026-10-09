@@ -135,7 +135,7 @@ final class MIDILearnDriver: ControllerDriver {
             let position = m.kind == .pitchBend ? Float(m.value) / 16383 : Float(m.value) / 127
             onAction?(.fader(channel: ch, position: position))
         case .playPause(let ch):
-            if pressed { onAction?(.playPause(channel: ch)) }
+            onAction?(.playButton(channel: ch, pressed: pressed))
         case .mute(let ch):
             onAction?(.muteButton(channel: ch, pressed: pressed))
         case .muteAll:

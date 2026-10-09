@@ -71,10 +71,15 @@ struct LevelMeter: View {
             let value = CGFloat(min(1, max(0, id.flatMap { levels.values[$0] } ?? 0)))
             ZStack(alignment: .bottom) {
                 Capsule().fill(Color.secondary.opacity(0.15))
+                if id?.hasPrefix("tab:") == true {
+                    // Tabs have no measurable level: show activity, not a fake meter.
+                    ActivityRain(active: value > 0)
+                } else {
                 Capsule()
                     .fill(LinearGradient(colors: [.green, .green, .yellow, .red], startPoint: .bottom, endPoint: .top))
                     .frame(height: geo.size.height * value)
                     .animation(.linear(duration: 0.04), value: value)
+                }
             }
         }
         .frame(width: 5)
@@ -91,7 +96,11 @@ struct HorizontalMeter: View {
             let value = CGFloat(min(1, max(0, levels.values[id] ?? 0)))
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.secondary.opacity(0.15))
-                Capsule().fill(Color.green.opacity(0.8)).frame(width: geo.size.width * value)
+                if id.hasPrefix("tab:") {
+                    ActivityRain(active: value > 0, axis: .horizontal)
+                } else {
+                    Capsule().fill(Color.green.opacity(0.8)).frame(width: geo.size.width * value)
+                }
             }
         }
         .frame(height: 4)

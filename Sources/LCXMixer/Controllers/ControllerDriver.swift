@@ -4,8 +4,8 @@ import Foundation
 /// Channels are zero-based; positions are 0…1.
 enum ControllerAction {
     case fader(channel: Int, position: Float)
-    /// The per-channel play/pause button was pressed.
-    case playPause(channel: Int)
+    /// The per-channel play/pause button went down or up (held for 3 s = reload the tab).
+    case playButton(channel: Int, pressed: Bool)
     /// The per-channel mute button went down or up (held for 1 s = unassign).
     case muteButton(channel: Int, pressed: Bool)
     /// The mute-all button was pressed (silences all media playback).
@@ -18,7 +18,7 @@ enum ControllerAction {
 
 /// A device-independent light colour. Each driver maps these to what its hardware can show.
 enum LightColor: Equatable {
-    case off, green, greenDim, amber, red, redDim, yellow, greenBlink, redBlink
+    case off, green, greenDim, amber, red, redDim, yellow, greenBlink, redBlink, amberBlink
 }
 
 /// The lights for one channel column.

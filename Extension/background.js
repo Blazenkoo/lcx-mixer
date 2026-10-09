@@ -88,6 +88,7 @@ async function sendSnapshot() {
       speed,
       canVolume,
       volume,
+      needsReload: needsReload.has(t.id),
     };
   });
   try { port.postMessage({ type: 'tabs', tabs: list, extensionBuild: BUILD }); } catch (e) { /* port closed */ }
@@ -187,6 +188,12 @@ function onAppMessage(msg) {
     case 'seekBy':
       sendCmd(msg.tabId, { action: 'seekBy', seconds: msg.seconds });
       break;
+    case 'reloadTab':
+      needsReload.delete(msg.tabId);
+      healAttempts.delete(msg.tabId);
+      frameStates.delete(msg.tabId);
+      chrome.tabs.reload(msg.tabId).catch(() => {});
+      break;
     case 'focus':
       chrome.tabs.update(msg.tabId, { active: true }).catch(() => {});
       if (typeof msg.windowId === 'number' && msg.windowId >= 0) {
@@ -202,6 +209,9 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   let frames = frameStates.get(tabId);
   if (!frames) { frames = new Map(); frameStates.set(tabId, frames); }
   frames.set(sender.frameId || 0, msg.state);
+  // The tab's scripts are running (again), with a player: it no longer needs a reload.
+  if (healAttempts.delete(tabId)) scheduleSnapshot(0);
+  if (msg.state && msg.state.hasMedia && needsReload.delete(tabId)) scheduleSnapshot(0);
   scheduleSnapshot();
 });
 
@@ -214,11 +224,21 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 });
 chrome.tabs.onRemoved.addListener((tabId) => {
   frameStates.delete(tabId);
+  healAttempts.delete(tabId);
+  needsReload.delete(tabId);
   softPaused.delete(tabId);
   appMuted.delete(tabId);
   scheduleSnapshot();
 });
 chrome.tabs.onCreated.addListener(() => scheduleSnapshot());
+// A tab that reloads or navigates starts fresh.
+chrome.tabs.onUpdated.addListener((tabId, info) => {
+  if (info.status === 'loading') {
+    needsReload.delete(tabId);
+    noMediaSince.delete(tabId);
+    healAttempts.delete(tabId);
+  }
+});
 chrome.tabs.onReplaced.addListener((added, removed) => { frameStates.delete(removed); scheduleSnapshot(); });
 
 // Inject into tabs that were already open when the extension was installed or reloaded.
@@ -226,11 +246,69 @@ async function injectExisting() {
   const tabs = await chrome.tabs.query({});
   for (const t of tabs) {
     if (!t.url || !/^https?:/.test(t.url)) continue;
-    chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: ['main-world.js'], world: 'MAIN' }).catch(() => {});
-    chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: ['isolated.js'] }).catch(() => {});
+    chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: ['main-world.js'], world: 'MAIN' })
+      .catch((e) => console.info('[LCX Mixer] inject main failed', t.id, String(e)));
+    chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: ['isolated.js'] })
+      .catch((e) => console.info('[LCX Mixer] inject isolated failed', t.id, String(e)));
   }
 }
 chrome.runtime.onInstalled.addListener(injectExisting);
+// Also on every start of this worker: after an update, Chrome doesn't always report an install,
+// and tabs opened before it still run the old scripts. The scripts skip themselves if already current.
+injectExisting();
+
+// Self-healing: an audible tab whose scripts never reported gets them injected again, twice.
+// If that still doesn't bring it back, the app is told the tab needs a reload.
+const healAttempts = new Map(); // tabId -> { count, lastAt }
+const needsReload = new Set();  // tabIds
+const workerStartedAt = Date.now();
+const noMediaSince = new Map(); // tabId -> when an audible tab was first seen without a player
+const log = (...a) => console.info('[LCX Mixer]', ...a);
+log('worker started, build', BUILD);
+async function healTabs() {
+  const tabs = await chrome.tabs.query({ audible: true });
+  const now = Date.now();
+  for (const t of tabs) {
+    if (!t.url || !/^https?:/.test(t.url) || needsReload.has(t.id)) continue;
+    // Safety net: in the first minute after an update, an audible tab whose scripts report but find
+    // no player is most likely stuck on the old copy's player. It gets "Reload tab" after 6 s.
+    if (frameStates.has(t.id)) {
+      const frames = [...frameStates.get(t.id).values()];
+      if (frames.length && !frames.some((s) => s.hasMedia) && now - workerStartedAt < 60000) {
+        if (!noMediaSince.has(t.id)) noMediaSince.set(t.id, now);
+        if (now - noMediaSince.get(t.id) > 6000) {
+          log('no player found after update; asking for a reload:', t.id, t.url);
+          needsReload.add(t.id);
+          scheduleSnapshot(0);
+        }
+      } else {
+        noMediaSince.delete(t.id);
+      }
+      continue;
+    }
+    const a = healAttempts.get(t.id) || { count: 0, lastAt: 0 };
+    if (now - a.lastAt < 3000) continue;
+    if (a.count >= 2) {
+      needsReload.add(t.id);
+      scheduleSnapshot(0);
+      continue;
+    }
+    a.count += 1;
+    a.lastAt = now;
+    healAttempts.set(t.id, a);
+    log('tab never reported; injecting again, attempt', a.count, t.id, t.url);
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: ['main-world.js'], world: 'MAIN' });
+      await chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: ['isolated.js'] });
+    } catch (e) {
+      log('cannot inject into', t.id, t.url, String(e));
+      healAttempts.delete(t.id); // a page scripts can't run on at all (e.g. the Web Store): leave it alone
+      needsReload.delete(t.id);
+      frameStates.set(t.id, new Map());
+    }
+  }
+}
+setInterval(healTabs, 1500);
 
 // Auto-update: the app rewrites this folder on every launch. When build.json changes,
 // release soft-paused tabs and reload so the new code runs without a manual reload.

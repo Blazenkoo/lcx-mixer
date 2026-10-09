@@ -17,6 +17,8 @@ struct Source: Identifiable, Equatable {
     var canPlayPause: Bool
     var canSetVolume: Bool
     var permissionNeeded = false
+    /// Browser tabs: the page lost its connection to the extension and needs a reload.
+    var needsReload = false
     var speed: Float = 1
     var canSpeed = false
     var canSeek = false
