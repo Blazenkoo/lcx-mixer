@@ -155,7 +155,7 @@ final class AppSettings: ObservableObject {
     }
 
     func isIgnored(_ keys: [String]) -> Bool {
-        keys.contains { key in ignoreList.contains(where: { !$0.isEmpty && $0 == key }) }
+        MuteLists.list(ignoreList, contains: keys)
     }
 
     /// Chrome is always handled tab by tab; another browser once its extension has connected.
@@ -166,7 +166,7 @@ final class AppSettings: ObservableObject {
     }
 
     func isMuteListed(_ keys: [String]) -> Bool {
-        keys.contains { key in muteList.contains(where: { !$0.isEmpty && $0 == key }) }
+        MuteLists.list(muteList, contains: keys)
     }
 
     /// Fader position (0…1) → gain (0…1).

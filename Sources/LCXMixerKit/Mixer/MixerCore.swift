@@ -365,7 +365,7 @@ final class MixerCore: ObservableObject {
 
     private func addSource(_ source: Source) {
         var s = source
-        if settings.isMuteListed(listKeys(s)) {
+        if lists.isMuted(s) {
             sources[s.id] = s
             listMuted.append(s.id)
             silenceListed(s.id)
@@ -612,7 +612,7 @@ final class MixerCore: ObservableObject {
 
     func ignore(_ id: String) {
         guard let s = sources[id] else { return }
-        let key = primaryKey(s)
+        let key = MuteLists.primaryKey(of: s)
         if !key.isEmpty && !settings.ignoreList.contains(key) { settings.ignoreList.append(key) }
         removeSource(id)
     }
@@ -620,14 +620,14 @@ final class MixerCore: ObservableObject {
     /// Adds the source's app or website to the mute list; it leaves its channel and goes silent.
     func alwaysMute(_ id: String) {
         guard let s = sources[id] else { return }
-        let key = primaryKey(s)
+        let key = MuteLists.primaryKey(of: s)
         if !key.isEmpty && !settings.muteList.contains(key) { settings.muteList.append(key) }
     }
 
     /// Takes the source's app or website off the mute list; it plays again and takes a channel.
     func removeFromMuteList(_ id: String) {
         guard let s = sources[id] else { return }
-        let keys = Set(listKeys(s))
+        let keys = Set(MuteLists.keys(of: s))
         settings.muteList.removeAll { keys.contains($0) }
     }
 
@@ -1125,11 +1125,11 @@ final class MixerCore: ObservableObject {
     }
 
     private func applyIgnoreList() {
-        for (id, s) in sources where settings.isIgnored(listKeys(s)) {
+        for id in lists.ignored(in: sources) {
             // Moved here from the mute list: give the sound back before letting go of it.
             if listMuted.contains(id) {
                 listMuted.removeAll { $0 == id }
-                if s.kind == .tab { sendTabMute(s) }
+                if let s = sources[id], s.kind == .tab { sendTabMute(s) }
             }
             removeSource(id)
         }
@@ -1137,15 +1137,8 @@ final class MixerCore: ObservableObject {
 
     // MARK: - Mute list
 
-    /// Keys a list entry can match: the app's group key and bundle IDs, or the tab's website.
-    private func listKeys(_ s: Source) -> [String] {
-        s.kind == .app ? [String(s.id.dropFirst(4))] + s.bundleIDs : [s.host]
-    }
-
-    /// The key written to a list when the user picks "Always ignore" or "Always mute".
-    private func primaryKey(_ s: Source) -> String {
-        s.kind == .app ? String(s.id.dropFirst(4)) : s.host
-    }
+    /// The mute and ignore lists as they stand in Settings.
+    private var lists: MuteLists { MuteLists(muteList: settings.muteList, ignoreList: settings.ignoreList) }
 
     private func silenceListed(_ id: String) {
         guard let s = sources[id] else { return }
@@ -1157,10 +1150,10 @@ final class MixerCore: ObservableObject {
 
     /// Applies a changed mute list to sources that are already playing.
     func applyMuteList() {
-        for (id, s) in sources where !settings.isIgnored(listKeys(s)) {
-            let listed = settings.isMuteListed(listKeys(s))
-            let muted = listMuted.contains(id)
-            if listed && !muted {
+        for change in lists.changes(in: sources, listMuted: listMuted) {
+            switch change {
+            case let .silence(id):
+                guard let s = sources[id] else { continue }
                 if let ch = channel(of: id) {
                     channels[ch] = nil
                     faders[ch].attached = false
@@ -1170,7 +1163,7 @@ final class MixerCore: ObservableObject {
                 listMuted.append(id)
                 silenceListed(id)
                 osd("–", title: s.displayName, value: "Muted by list", icon: s.icon, duration: 3, source: s)
-            } else if !listed && muted {
+            case let .release(id):
                 listMuted.removeAll { $0 == id }
                 applyGainAndMute(id) // sound back first
                 if let ch = firstFreeChannel() { place(id, on: ch) } else { waiting.append(id) }
