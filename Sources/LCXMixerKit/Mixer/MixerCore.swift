@@ -18,20 +18,21 @@ final class LevelStore: ObservableObject {
 final class MixerCore: ObservableObject {
     static let channelCount = 8
 
-    @Published private(set) var channels: [String?] = Array(repeating: nil, count: MixerCore.channelCount) {
+    /// Who sits on which channel, who waits, who is unassigned (ChannelAssignment keeps the books).
+    @Published private(set) var assignment = ChannelAssignment(channels: MixerCore.channelCount) {
         didSet {
-            for i in 0..<MixerCore.channelCount where oldValue[i] != channels[i] { resetKnobs(i) }
-            // A channel that gets any source is no longer held for the one that sat there before the restart.
-            if !restore.isEmpty { restore = restore.filter { channels[$0.key] == nil } }
+            guard assignment.channels != oldValue.channels else { return }
+            for i in 0..<MixerCore.channelCount where oldValue.channels[i] != assignment.channels[i] { resetKnobs(i) }
             scheduleRefresh()
             saveLayout()
         }
     }
     @Published private(set) var sources: [String: Source] = [:] { didSet { scheduleRefresh(); saveLayout() } }
-    @Published private(set) var waiting: [String] = []
-    @Published private(set) var manual: [String] = []
+    var channels: [String?] { assignment.channels }
+    var waiting: [String] { assignment.waiting }
+    var manual: [String] { assignment.manual }
     /// Sources silenced by the mute list: shown in Unassigned, never on a channel.
-    @Published private(set) var listMuted: [String] = []
+    var listMuted: [String] { assignment.listMuted }
     @Published private(set) var muteAll = false { didSet { scheduleRefresh() } }
     /// The Mac's current microphone is muted (Solo button).
     @Published private(set) var micMuted = false { didSet { scheduleRefresh() } }
@@ -90,12 +91,9 @@ final class MixerCore: ObservableObject {
     private var pollCount = 0
 
     // Restoring the channel layout after a restart
-    private struct SavedSlot: Codable, Equatable { var id: String; var host: String }
     private static let layoutKey = "channelLayout"
     /// How long a channel is held for the source that sat on it before the restart.
     private static let restoreWindow: TimeInterval = 10
-    /// Channels held for sources from the saved layout, until they return or the window ends.
-    private var restore: [Int: SavedSlot] = [:]
     private var lastSavedLayout: Data?
 
     /// Where the channel layout is saved between launches.
@@ -254,7 +252,7 @@ final class MixerCore: ObservableObject {
                    permissionStatus == .authorized {
                     native.apply(id, processObjects: app.processObjects, gain: effectiveGain(s))
                 }
-            } else if app.isRunningOutput || isHeld(id, host: "") {
+            } else if app.isRunningOutput || assignment.isHeld(id, host: "") {
                 var s = Source(
                     id: id, kind: .app, name: app.name, detail: detail, icon: app.icon,
                     rememberKey: key, isPlaying: true, isAudible: true, isMuted: false, volume: 1,
@@ -351,41 +349,39 @@ final class MixerCore: ObservableObject {
 
     /// Automatic placement skips channels held for a returning source; your own actions (Assign, drag) may use them.
     private func firstFreeChannel(includingHeld: Bool = false) -> Int? {
-        (firstSourceChannel..<MixerCore.channelCount).first { channels[$0] == nil && (includingHeld || restore[$0] == nil) }
+        assignment.firstFreeChannel(from: firstSourceChannel, includingHeld: includingHeld)
     }
 
     private func addSource(_ source: Source) {
         var s = source
         if lists.isMuted(s) {
             sources[s.id] = s
-            listMuted.append(s.id)
+            assignment.addListMuted(s.id)
             silenceListed(s.id)
             return
         }
         if s.kind == .app && permissionStatus == .denied {
             s.permissionNeeded = true
             sources[s.id] = s
-            manual.append(s.id)
+            assignment.addManual(s.id)
             return
         }
         sources[s.id] = s
-        if let ch = heldChannel(for: s) {
+        if let ch = assignment.heldChannel(for: s, from: firstSourceChannel) {
             place(s.id, on: ch)
         } else if let ch = firstFreeChannel() {
             place(s.id, on: ch)
         } else {
-            waiting.append(s.id)
+            assignment.addWaiting(s.id)
             osd("–", title: s.displayName, value: "Waiting for a channel", icon: s.icon, duration: 3, source: s)
         }
     }
 
     private func place(_ id: String, on ch: Int) {
-        channels[ch] = id
+        assignment.place(id, on: ch)
         if let s = sources[id] {
             osd("\(ch + 1)", title: s.displayName, value: "On channel \(ch + 1)", icon: s.icon, duration: 3, source: s)
         }
-        waiting.removeAll { $0 == id }
-        manual.removeAll { $0 == id }
         faders[ch].attached = false
         blinkUntil[ch] = Date().addingTimeInterval(0.8)
         after(0.85) { [weak self] in self?.scheduleRefresh() }
@@ -437,8 +433,8 @@ final class MixerCore: ObservableObject {
             s.permissionNeeded = true
             sources[id] = s
             if let ch = channel(of: id) {
-                channels[ch] = nil
-                manual.append(id)
+                assignment.clear(ch)
+                assignment.addManual(id)
                 fillFromWaiting(ch)
             }
         case .unknown where !permissionRequested:
@@ -475,8 +471,8 @@ final class MixerCore: ObservableObject {
                     tapIfPossible(id) // now it can actually be silenced
                     continue
                 }
-                manual.removeAll { $0 == id }
-                if let ch = firstFreeChannel() { place(id, on: ch) } else { waiting.append(id) }
+                assignment.removeManual(id)
+                if let ch = firstFreeChannel() { place(id, on: ch) } else { assignment.addWaiting(id) }
             } else if channel(of: id) != nil {
                 tapIfPossible(id)
             }
@@ -485,21 +481,19 @@ final class MixerCore: ObservableObject {
 
     private func removeSource(_ id: String) {
         let ch = channel(of: id)
-        waiting.removeAll { $0 == id }
-        manual.removeAll { $0 == id }
-        listMuted.removeAll { $0 == id }
+        assignment.forget(id)
         native.release(id)
         pendingTabVolume.remove(id)
         sources[id] = nil
         if let ch {
-            channels[ch] = nil
+            assignment.clear(ch)
             faders[ch].attached = false
             fillFromWaiting(ch)
         }
     }
 
     private func fillFromWaiting(_ ch: Int) {
-        guard ch >= firstSourceChannel, channels[ch] == nil, restore[ch] == nil, let next = waiting.first else { return }
+        guard let next = assignment.nextToFill(ch, from: firstSourceChannel) else { return }
         place(next, on: ch)
     }
 
@@ -508,47 +502,25 @@ final class MixerCore: ObservableObject {
     /// Loads the layout saved before the app last quit, and holds those channels for a short while.
     func loadLayout() {
         guard let data = layoutStore.data(forKey: Self.layoutKey),
-              let slots = try? JSONDecoder().decode([SavedSlot?].self, from: data) else { return }
+              let slots = try? JSONDecoder().decode([ChannelAssignment.SavedSlot?].self, from: data) else { return }
         lastSavedLayout = data
-        for (ch, slot) in slots.enumerated() where ch < Self.channelCount {
-            if let slot { restore[ch] = slot }
-        }
-        if !restore.isEmpty {
+        assignment.hold(slots)
+        if !assignment.held.isEmpty {
             after(Self.restoreWindow) { [weak self] in self?.endRestore() }
         }
     }
 
     /// Saves which source sits on which channel: only the source's ID (tab number or app) and, for tabs, the website.
     private func saveLayout() {
-        var slots: [SavedSlot?] = Array(repeating: nil, count: Self.channelCount)
-        for ch in 0..<Self.channelCount {
-            if let id = channels[ch], let s = sources[id] {
-                slots[ch] = SavedSlot(id: id, host: s.kind == .tab ? s.host : "")
-            } else if let held = restore[ch] {
-                slots[ch] = held // keep it saved while it's still being held
-            }
-        }
-        guard let data = try? JSONEncoder().encode(slots), data != lastSavedLayout else { return }
+        guard let data = try? JSONEncoder().encode(assignment.layout(sources)), data != lastSavedLayout else { return }
         lastSavedLayout = data
         layoutStore.set(data, forKey: Self.layoutKey)
     }
 
-    /// A tab must also be on the same website, so a reused tab number can't take another site's channel.
-    private func isHeld(_ id: String, host: String) -> Bool {
-        restore.values.contains { $0.id == id && (id.hasPrefix("app:") || $0.host == host) }
-    }
-
-    private func heldChannel(for s: Source) -> Int? {
-        restore.first { entry in
-            entry.value.id == s.id && (s.kind == .app || entry.value.host == s.host)
-                && entry.key >= firstSourceChannel && channels[entry.key] == nil
-        }?.key
-    }
-
     /// Sources that didn't come back in time give up their channels; waiting sources fill them.
     private func endRestore() {
-        guard !restore.isEmpty else { return }
-        restore.removeAll()
+        guard !assignment.held.isEmpty else { return }
+        assignment.endHolding()
         for ch in firstSourceChannel..<Self.channelCount where channels[ch] == nil { fillFromWaiting(ch) }
         saveLayout()
     }
@@ -560,9 +532,9 @@ final class MixerCore: ObservableObject {
         if let s = sources[id] {
             osd("\(ch + 1)", title: s.displayName, value: "Unassigned", icon: s.icon, duration: 3, source: s)
         }
-        channels[ch] = nil
+        assignment.clear(ch)
         faders[ch].attached = false
-        manual.append(id)
+        assignment.addManual(id)
         applyGainAndMute(id)
         fillFromWaiting(ch)
     }
@@ -587,14 +559,13 @@ final class MixerCore: ObservableObject {
         let occupant = channels[ch]
         if occupant == id { return }
         if let from = channel(of: id) {
-            channels[from] = occupant
-            channels[ch] = id
+            assignment.swap(from, ch)
             faders[from].attached = false
             faders[ch].attached = false
             if occupant == nil { fillFromWaiting(from) }
         } else {
             if let occupant {
-                manual.append(occupant)
+                assignment.addManual(occupant)
                 applyGainAndMute(occupant)
             }
             place(id, on: ch)
@@ -1023,8 +994,8 @@ final class MixerCore: ObservableObject {
 
     private func masterModeChanged() {
         if masterActive, let id = channels[0] {
-            channels[0] = nil
-            if let ch = firstFreeChannel() { place(id, on: ch) } else { waiting.insert(id, at: 0) }
+            assignment.clear(0)
+            if let ch = firstFreeChannel() { place(id, on: ch) } else { assignment.addWaiting(id, first: true) }
         } else if !masterActive {
             fillFromWaiting(0)
         }
@@ -1036,7 +1007,7 @@ final class MixerCore: ObservableObject {
         for id in lists.ignored(in: sources) {
             // Moved here from the mute list: give the sound back before letting go of it.
             if listMuted.contains(id) {
-                listMuted.removeAll { $0 == id }
+                assignment.removeListMuted(id)
                 if let s = sources[id], s.kind == .tab { sendTabMute(s) }
             }
             removeSource(id)
@@ -1063,18 +1034,17 @@ final class MixerCore: ObservableObject {
             case let .silence(id):
                 guard let s = sources[id] else { continue }
                 if let ch = channel(of: id) {
-                    channels[ch] = nil
+                    assignment.clear(ch)
                     faders[ch].attached = false
                 }
-                waiting.removeAll { $0 == id }
-                manual.removeAll { $0 == id }
-                listMuted.append(id)
+                assignment.forget(id)
+                assignment.addListMuted(id)
                 silenceListed(id)
                 osd("–", title: s.displayName, value: "Muted by list", icon: s.icon, duration: 3, source: s)
             case let .release(id):
-                listMuted.removeAll { $0 == id }
+                assignment.removeListMuted(id)
                 applyGainAndMute(id) // sound back first
-                if let ch = firstFreeChannel() { place(id, on: ch) } else { waiting.append(id) }
+                if let ch = firstFreeChannel() { place(id, on: ch) } else { assignment.addWaiting(id) }
             }
         }
         for ch in firstSourceChannel..<MixerCore.channelCount where channels[ch] == nil { fillFromWaiting(ch) }
@@ -1131,7 +1101,7 @@ final class MixerCore: ObservableObject {
             let gain = TabMerger.reportedGain(t, gainForPosition: settings.gain(forPosition:))
 
             guard let old = sources[id] else {
-                guard TabMerger.joins(t, held: isHeld(id, host: t.host), ignored: settings.isIgnored([t.host])) else { continue }
+                guard TabMerger.joins(t, held: assignment.isHeld(id, host: t.host), ignored: settings.isIgnored([t.host])) else { continue }
                 seen.insert(id)
                 var s = TabMerger.newSource(t, id: id, from: connection, gain: gain)
                 s.icon = icons.icon(for: t.favicon) { [weak self] image in self?.setIcon(id, image) }
