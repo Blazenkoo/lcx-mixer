@@ -1,9 +1,4 @@
 
-
-https://github.com/user-attachments/assets/dede590b-4c1e-420d-b5ca-7e4d4ef59d95
-
-
-
 <h1 align="center">LCX Mixer</h1>
 
 <p align="center"><strong>Map everything playing to your Novation Launch Control XL (MK2).</strong></p>
