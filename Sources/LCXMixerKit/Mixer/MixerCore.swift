@@ -69,23 +69,18 @@ final class MixerCore: ObservableObject {
     private let icons = IconLoader()
     private let launchedAt = Date()
 
-    // Knobs: speed (bottom row) and seek shuttle (middle row)
-    private var speedAttached = Array(repeating: false, count: MixerCore.channelCount)
-    private var speedPrev: [Float?] = Array(repeating: nil, count: MixerCore.channelCount)
-    private var speedSentAt: [String: Date] = [:]
-    private var seekDeflection = Array(repeating: Float(0), count: MixerCore.channelCount)
-    private var seekArmed = Array(repeating: false, count: MixerCore.channelCount)
+    // Knobs and buttons: what a move means is ControlInput's; the timers stay here.
+    private var controls = ControlInput(channels: MixerCore.channelCount)
+    /// Seek shuttle (middle row): jumps every 0.5 s while a knob is turned.
     private var seekTimers: [Int: Timer] = [:]
+    /// Holding a channel's play button for 3 s reloads its tab.
+    private let playHold = ButtonHold()
+    /// Holding a channel's mute button for 1 s unassigns it.
+    private let muteHold = ButtonHold()
+    private var speedSentAt: [String: Date] = [:]
     private var notAvailableShownAt: [Int: Date] = [:]
     private var refreshScheduled = false
     private var blinkUntil: [Date?] = Array(repeating: nil, count: MixerCore.channelCount)
-    private var holdTimers: [Int: DispatchWorkItem] = [:]
-    private var holdFired = Set<Int>()
-    private var lastTopPress: [Int: Date] = [:]
-    /// Holding a channel's play button for 3 s reloads its tab.
-    private var reloadTimers: [Int: DispatchWorkItem] = [:]
-    private var reloadFired = Set<Int>()
-    private var hintTimers: [Int: DispatchWorkItem] = [:]
     private var volumeSentAt: [String: Date] = [:]
     private var muteSentAt: [String: Date] = [:]
     private var pendingTabVolume = Set<String>()
@@ -152,8 +147,6 @@ final class MixerCore: ObservableObject {
 
     /// Hint shown while a fader waits for soft takeover, nil when attached.
     func takeoverHint(channel ch: Int) -> String? {
-        let f = faders[ch]
-        guard !f.attached, let p = f.position else { return nil }
         let target: Float
         if masterActive && ch == 0 {
             target = masterVolume
@@ -162,9 +155,7 @@ final class MixerCore: ObservableObject {
         } else {
             return nil
         }
-        // Below the current level the next touch takes over immediately, so only "above" needs a hint.
-        if p <= target + 0.03 { return nil }
-        return "Move fader down"
+        return ControlInput.takeoverHint(faders[ch], target: target)
     }
 
     // MARK: - Start
@@ -827,33 +818,11 @@ final class MixerCore: ObservableObject {
         }
     }
 
-    // MARK: - Knobs
-
-    static let speedSteps: [Float] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
-
-    /// Centre = 1×, left end = 0.5×, right end = 2×, in fixed steps.
-    static func speed(forKnob p: Float) -> Float {
-        if p <= 0.5 {
-            let i = Int((p / 0.5 * 2).rounded())            // 0…2 → 0.5, 0.75, 1
-            return speedSteps[max(0, min(2, i))]
-        }
-        let i = Int(((p - 0.5) / 0.5 * 4).rounded())        // 0…4 → 1 … 2
-        return speedSteps[2 + max(0, min(4, i))]
-    }
-
-    private func speedLabel(_ speed: Float) -> String {
-        let text = String(format: "%.2f", speed)
-            .replacingOccurrences(of: #"0+$"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"\.$"#, with: "", options: .regularExpression)
-        return text + "×"
-    }
+    // MARK: - Knobs, faders and buttons
 
     private func resetKnobs(_ ch: Int) {
-        speedAttached[ch] = false
-        speedPrev[ch] = nil
+        controls.reset(ch)
         stopSeek(ch)
-        seekArmed[ch] = false
-        seekDeflection[ch] = 0
     }
 
     private func notAvailable(_ ch: Int, _ s: Source, _ what: String) {
@@ -869,73 +838,55 @@ final class MixerCore: ObservableObject {
             notAvailable(ch, s, "Speed")
             return
         }
-        let speed = MixerCore.speed(forKnob: p)
-        if !speedAttached[ch] {
-            if abs(speed - s.speed) < 0.01 {
-                speedAttached[ch] = true
-            } else if let prev = speedPrev[ch], (prev - s.speed) * (speed - s.speed) <= 0 {
-                speedAttached[ch] = true
+        switch controls.speedKnob(ch, at: p, current: s.speed) {
+        case let .waiting(hint):
+            if hint {
+                osd("\(ch + 1)", title: s.displayName, value: "Turn to \(ControlInput.speedLabel(s.speed)) to take over", source: s)
             }
+        case .unchanged:
+            break
+        case let .set(speed):
+            var updated = s
+            updated.speed = speed
+            sources[s.id] = updated
+            speedSentAt[s.id] = Date()
+            chrome.setSpeed(conn, tabId: tabId, rate: speed)
+            osd("\(ch + 1)", title: s.displayName, value: "Speed \(ControlInput.speedLabel(speed))", source: s)
+            scheduleRefresh()
         }
-        let previous = speedPrev[ch]
-        speedPrev[ch] = speed
-        guard speedAttached[ch] else {
-            if previous != speed {
-                osd("\(ch + 1)", title: s.displayName, value: "Turn to \(speedLabel(s.speed)) to take over", source: s)
-            }
-            return
-        }
-        guard abs(speed - s.speed) > 0.001 else { return }
-        var updated = s
-        updated.speed = speed
-        sources[s.id] = updated
-        speedSentAt[s.id] = Date()
-        chrome.setSpeed(conn, tabId: tabId, rate: speed)
-        osd("\(ch + 1)", title: s.displayName, value: "Speed \(speedLabel(speed))", source: s)
-        scheduleRefresh()
     }
 
     private func seekKnob(_ ch: Int, position p: Float) {
         guard !(masterActive && ch == 0), let s = source(onChannel: ch) else { return }
-        let d = (p - 0.5) * 2
-        let centred = abs(d) < 0.12
-        if !seekArmed[ch] {
-            // Safety: a knob that wasn't centred when the source arrived does nothing until it passes centre.
-            if centred {
-                seekArmed[ch] = true
-            } else {
-                if s.canSeek { osd("\(ch + 1)", title: s.displayName, value: "Return knob to centre to seek", source: s) }
-                return
-            }
-        }
-        seekDeflection[ch] = centred ? 0 : d
-        if centred {
+        switch controls.seekKnob(ch, at: p) {
+        case .notArmed:
+            if s.canSeek { osd("\(ch + 1)", title: s.displayName, value: "Return knob to centre to seek", source: s) }
+        case .centred:
             stopSeek(ch)
             scheduleRefresh()
-            return
+        case .turned:
+            guard s.canSeek, s.tabId != nil else {
+                notAvailable(ch, s, "Seek")
+                return
+            }
+            if seekTimers[ch] == nil {
+                seekTick(ch)
+                seekTimers[ch] = mainTimer(every: 0.5) { [weak self] in self?.seekTick(ch) }
+            }
+            scheduleRefresh()
         }
-        guard s.canSeek, s.tabId != nil else {
-            notAvailable(ch, s, "Seek")
-            return
-        }
-        if seekTimers[ch] == nil {
-            seekTick(ch)
-            seekTimers[ch] = mainTimer(every: 0.5) { [weak self] in self?.seekTick(ch) }
-        }
-        scheduleRefresh()
     }
 
     private func seekTick(_ ch: Int) {
-        let d = seekDeflection[ch]
+        let d = controls.seekDeflection[ch]
         guard d != 0, let s = source(onChannel: ch), s.canSeek, let tabId = s.tabId, let conn = s.browserConnection else {
             stopSeek(ch)
             return
         }
-        let magnitude = abs(d)
-        let step: Float = magnitude < 0.45 ? 5 : (magnitude < 0.8 ? 15 : 30)
-        let seconds = d > 0 ? step : -step
+        let seconds = ControlInput.seekStep(d)
+        let step = Int(abs(seconds))
         chrome.seekBy(conn, tabId: tabId, seconds: seconds)
-        osd("\(ch + 1)", title: s.displayName, value: d > 0 ? "⏩ +\(Int(step)) s" : "⏪ −\(Int(step)) s", source: s)
+        osd("\(ch + 1)", title: s.displayName, value: d > 0 ? "⏩ +\(step) s" : "⏪ −\(step) s", source: s)
     }
 
     private func stopSeek(_ ch: Int) {
@@ -943,23 +894,10 @@ final class MixerCore: ObservableObject {
         seekTimers[ch] = nil
     }
 
+    /// Soft takeover (ControlInput decides); true when the fader now drives the level.
     private func softTakeover(_ ch: Int, _ p: Float, target: Float) -> Bool {
-        var f = faders[ch]
-        // A motorised fader was moved to the real level by the app, so it's always in charge.
-        if controller.hasMotorisedFaders { f.attached = true }
-        if !f.attached {
-            if p < target {
-                // Fader is below the current level: jumping down is always safe, take over at once.
-                f.attached = true
-            } else if abs(p - target) < 0.03 {
-                f.attached = true
-            } else if let prev = f.position, (prev - target) * (p - target) <= 0 {
-                f.attached = true
-            }
-        }
-        f.position = p
-        faders[ch] = f
-        return f.attached
+        faders[ch] = ControlInput.takeover(faders[ch], movedTo: p, target: target, motorised: controller.hasMotorisedFaders)
+        return faders[ch].attached
     }
 
     private func faderMoved(_ ch: Int, position p: Float) {
@@ -989,35 +927,18 @@ final class MixerCore: ObservableObject {
     /// Play acts on release, so a 3-second hold can reload the tab instead.
     private func topButton(_ ch: Int, pressed: Bool) {
         if pressed {
-            reloadFired.remove(ch)
-            reloadTimers[ch]?.cancel()
-            guard let s = source(onChannel: ch), s.kind == .tab else { return }
-            let hint = DispatchWorkItem { [weak self] in
-                MainActor.assumeIsolated {
-                    guard let self, let s = self.source(onChannel: ch) else { return }
-                    self.osd("\(ch + 1)", title: s.displayName, value: "Keep holding to reload the tab", source: s)
-                }
-            }
-            let reload = DispatchWorkItem { [weak self] in
-                MainActor.assumeIsolated {
-                    guard let self, let s = self.source(onChannel: ch) else { return }
-                    self.reloadFired.insert(ch)
-                    self.reloadTimers[ch] = nil
-                    self.reloadTab(s.id)
-                }
-            }
-            reloadTimers[ch] = reload
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: hint)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: reload)
-            // Cancel the hint together with the reload if the button comes up early.
-            hintTimers[ch]?.cancel()
-            hintTimers[ch] = hint
+            playHold.reset(ch)
+            guard source(onChannel: ch)?.kind == .tab else { return }
+            playHold.press(ch, holdAfter: 3, hintAfter: 1, hint: { [weak self] in
+                guard let self, let s = self.source(onChannel: ch) else { return }
+                self.osd("\(ch + 1)", title: s.displayName, value: "Keep holding to reload the tab", source: s)
+            }, onHold: { [weak self] in
+                guard let self, let s = self.source(onChannel: ch) else { return false }
+                self.reloadTab(s.id)
+                return true
+            })
         } else {
-            hintTimers[ch]?.cancel()
-            hintTimers[ch] = nil
-            reloadTimers[ch]?.cancel()
-            reloadTimers[ch] = nil
-            if reloadFired.remove(ch) != nil { return }
+            guard playHold.release(ch) else { return }
             topPressed(ch)
         }
     }
@@ -1031,41 +952,28 @@ final class MixerCore: ObservableObject {
 
     private func topPressed(_ ch: Int) {
         guard let s = source(onChannel: ch), s.kind == .tab else { return }
-        let now = Date()
-        if s.isTwitch, let last = lastTopPress[ch], now.timeIntervalSince(last) < 0.4 {
-            lastTopPress[ch] = nil
+        if controls.playPressIsDouble(ch, at: Date(), counting: s.isTwitch) {
             togglePlay(s.id)
             if let tabId = s.tabId, let conn = s.browserConnection { chrome.jumpLive(conn, tabId: tabId) }
             osd("\(ch + 1)", title: s.displayName, value: "Jump to live", source: s)
             return
         }
-        lastTopPress[ch] = now
         togglePlay(s.id)
         let playing = sources[s.id]?.isPlaying ?? false
         osd("\(ch + 1)", title: s.displayName, value: s.canPlayPause ? (playing ? "Playing" : "Paused") : "Play/pause", source: s)
     }
 
+    /// Mute acts on release, so a 1-second hold can unassign the channel instead.
     private func bottomButton(_ ch: Int, pressed: Bool) {
         if pressed {
             guard channels[ch] != nil else { return }
-            holdFired.remove(ch)
-            holdTimers[ch]?.cancel()
-            let work = DispatchWorkItem { [weak self] in
-                MainActor.assumeIsolated {
-                    guard let self, let s = self.source(onChannel: ch) else { return }
-                    self.holdFired.insert(ch)
-                    self.holdTimers[ch] = nil
-                    _ = s
-                    self.unassign(channel: ch)
-                }
+            muteHold.press(ch, holdAfter: 1) { [weak self] in
+                guard let self, self.source(onChannel: ch) != nil else { return false }
+                self.unassign(channel: ch)
+                return true
             }
-            holdTimers[ch] = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
         } else {
-            holdTimers[ch]?.cancel()
-            holdTimers[ch] = nil
-            if holdFired.remove(ch) != nil { return }
-            guard let s = source(onChannel: ch) else { return }
+            guard muteHold.release(ch), let s = source(onChannel: ch) else { return }
             toggleMute(s.id)
             let muted = sources[s.id]?.isMuted ?? false
             osd("\(ch + 1)", title: s.displayName, value: muted ? "Muted" : "Unmuted", source: s)
@@ -1097,7 +1005,7 @@ final class MixerCore: ObservableObject {
             if masterActive && ch == 0 { return .master(volume: masterVolume) }
             guard let s = source(onChannel: ch) else { return .empty }
             return .source(s, position: position(of: s), blinking: blinkUntil[ch].map { $0 > now } ?? false,
-                           seeking: seekTimers[ch] != nil ? seekDeflection[ch] : nil)
+                           seeking: seekTimers[ch] != nil ? controls.seekDeflection[ch] : nil)
         }
         controller.show(LightComposer.lights(for: channels, muteAll: muteAll, micMuted: micMuted))
     }
@@ -1238,7 +1146,7 @@ final class MixerCore: ObservableObject {
                 volumePending: pendingTabVolume.contains(id), muteHeld: (muteAll && onChannel) || listMuted.contains(id)
             )
             var update = TabMerger.update(old, with: t, from: connection, gain: gain, recent: recent)
-            if update.speedChangedInPage, let ch = channel(of: id) { speedAttached[ch] = false }
+            if update.speedChangedInPage, let ch = channel(of: id) { controls.detachSpeedKnob(ch) }
             if update.volumeChangedInPage, let ch = channel(of: id) { faders[ch].attached = false }
             if update.sendPendingVolume {
                 pendingTabVolume.remove(id)
