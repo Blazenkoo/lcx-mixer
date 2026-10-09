@@ -1206,109 +1206,51 @@ final class MixerCore: ObservableObject {
 
     /// Tabs show their browser's name only while tabs from more than one browser are in the mixer.
     private func updateBrowserLabels() {
-        let keys = Set(sources.values.filter { $0.kind == .tab }.map(\.browserKey))
-        let several = keys.count > 1
-        for (id, s) in sources where s.kind == .tab {
-            let label = several ? (Browsers.info(forBundleID: s.browserKey)?.name ?? "Browser") : nil
-            if s.browserLabel != label {
-                var updated = s
-                updated.browserLabel = label
-                sources[id] = updated
-            }
+        for (id, label) in TabMerger.browserLabels(for: sources) {
+            guard var s = sources[id], s.browserLabel != label else { continue }
+            s.browserLabel = label
+            sources[id] = s
         }
     }
 
-    /// Merges one browser connection's tab list into the mixer's sources.
+    /// Merges one browser connection's tab list into the mixer's sources. TabMerger works out the
+    /// values; this adds, updates and removes the sources and sends what needs sending.
     func handleTabs(_ tabs: [TabReport], from connection: BrowserConnection) {
         var seen = Set<String>()
         let now = Date()
         for t in tabs {
-            let tabId = t.tabId
-            // Tab numbers are only unique within one browser, so the browser is part of the ID.
-            let id = "tab:\(connection.key):\(tabId)"
-            let host = t.host
-            let title = t.title
-            let audible = t.audible
-            let muted = t.muted
-            let hasMedia = t.hasMedia
-            let playing = t.playing
-            let canVolume = t.canVolume
-            let canSpeed = t.canSpeed
-            let canSeek = t.canSeek
-            let speed = t.speed
-            // Spotify reports its slider position; convert it to gain with the app's curve.
-            let volume = t.reportedVolume.map { t.volumeIsPosition ? settings.gain(forPosition: $0) : $0 }
-            let favicon = t.favicon
-            let windowId = t.windowId
-            let windowBounds = t.windowBounds
+            let id = TabMerger.sourceID(of: t, from: connection)
+            let gain = TabMerger.reportedGain(t, gainForPosition: settings.gain(forPosition:))
 
-            if sources[id] == nil {
-                // A paused tab that held a channel before the restart takes it back too.
-                guard audible || (hasMedia && isHeld(id, host: host)), !settings.isIgnored([host]) else { continue }
+            guard let old = sources[id] else {
+                guard TabMerger.joins(t, held: isHeld(id, host: t.host), ignored: settings.isIgnored([t.host])) else { continue }
                 seen.insert(id)
-                var s = Source(
-                    id: id, kind: .tab, name: SiteNames.name(forHost: host),
-                    detail: SiteNames.cleanTitle(title, host: host), icon: nil, rememberKey: host,
-                    isPlaying: playing || !hasMedia, isAudible: audible, isMuted: muted,
-                    volume: canVolume ? (volume ?? 1) : 1, canPlayPause: hasMedia, canSetVolume: canVolume
-                )
-                s.tabId = tabId
-                s.windowId = windowId
-                s.browserConnection = connection.id
-                s.browserKey = connection.key
-                s.windowBounds = windowBounds
-                s.canSpeed = canSpeed
-                s.canSeek = canSeek
-                s.needsReload = t.needsReload
-                if let speed { s.speed = speed }
-                s.host = host
-                s.icon = icons.icon(for: favicon) { [weak self] image in self?.setIcon(id, image) }
+                var s = TabMerger.newSource(t, id: id, from: connection, gain: gain)
+                s.icon = icons.icon(for: t.favicon) { [weak self] image in self?.setIcon(id, image) }
                 addSource(s)
                 continue
             }
 
             seen.insert(id)
-            guard var s = sources[id] else { continue }
-            if s.host != host {
-                s.icon = nil
-                s.rememberKey = host
-            }
-            s.host = host
-            s.name = SiteNames.name(forHost: host)
-            s.detail = SiteNames.cleanTitle(title, host: host)
-            s.isAudible = audible
-            s.isPlaying = hasMedia ? playing : audible
-            s.canPlayPause = hasMedia
-            s.canSetVolume = canVolume
-            s.needsReload = t.needsReload
-            s.windowId = windowId
-            s.browserConnection = connection.id
-            if let windowBounds { s.windowBounds = windowBounds }
-            s.canSpeed = canSpeed
-            s.canSeek = canSeek
-            if let speed, abs(speed - s.speed) > 0.01, now.timeIntervalSince(speedSentAt[id] ?? .distantPast) > 1.5 {
-                s.speed = speed // changed in the page itself (e.g. YouTube's own menu)
-                if let ch = channel(of: id) { speedAttached[ch] = false }
-            }
             let onChannel = channel(of: id) != nil
-            if now.timeIntervalSince(muteSentAt[id] ?? .distantPast) > 1.0 && !(muteAll && onChannel) && !listMuted.contains(id) {
-                s.isMuted = muted
-            }
-            if canVolume, pendingTabVolume.contains(id) {
+            let recent = TabMerger.Recent(
+                now: now, volumeSentAt: volumeSentAt[id], speedSentAt: speedSentAt[id], muteSentAt: muteSentAt[id],
+                volumePending: pendingTabVolume.contains(id), muteHeld: (muteAll && onChannel) || listMuted.contains(id)
+            )
+            var update = TabMerger.update(old, with: t, from: connection, gain: gain, recent: recent)
+            if update.speedChangedInPage, let ch = channel(of: id) { speedAttached[ch] = false }
+            if update.volumeChangedInPage, let ch = channel(of: id) { faders[ch].attached = false }
+            if update.sendPendingVolume {
                 pendingTabVolume.remove(id)
-                sources[id] = s
-                sendTabVolume(s)
-            } else if canVolume, let v = volume, abs(v - s.volume) > 0.01,
-                      now.timeIntervalSince(volumeSentAt[id] ?? .distantPast) > 1.5 {
-                s.volume = v
-                if let ch = channel(of: id) { faders[ch].attached = false }
+                sources[id] = update.source
+                sendTabVolume(update.source)
             }
-            if let icon = icons.icon(for: favicon, completion: { [weak self] image in self?.setIcon(id, image) }) {
-                s.icon = icon
+            if let icon = icons.icon(for: t.favicon, completion: { [weak self] image in self?.setIcon(id, image) }) {
+                update.source.icon = icon
             }
-            if s != sources[id] { sources[id] = s }
+            if update.source != sources[id] { sources[id] = update.source }
         }
-        for (id, s) in sources where s.kind == .tab && s.browserConnection == connection.id && !seen.contains(id) {
+        for id in TabMerger.closed(in: sources, connection: connection, seen: seen) {
             removeSource(id)
         }
         updateBrowserLabels()
