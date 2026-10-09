@@ -23,6 +23,14 @@ final class AudioEngine {
     func setMasterVolume(_ value: Float) { CA.setMasterVolume(outputDevice, value) }
 
     func hasTap(_ id: String) -> Bool { taps[id] != nil }
+    func gain(id: String) -> Float? { taps[id]?.gain }
+
+    /// Whether taps measure levels (only while a meter is visible).
+    private var metering = false
+    func setMetering(_ on: Bool) {
+        metering = on
+        for tap in taps.values { tap.metering = on }
+    }
 
     /// Creates or updates the tap for a source. Rebuilds it when the set of processes changed.
     func ensureTap(id: String, processObjects: [AudioObjectID], gain: Float) {
@@ -37,6 +45,7 @@ final class AudioEngine {
         }
         guard !objects.isEmpty else { return }
         let tap = ProcessTap(processObjects: objects, gain: gain)
+        tap.metering = metering
         if tap.start(outputDevice: outputDevice) {
             taps[id] = tap
         } else {
@@ -71,6 +80,7 @@ final class AudioEngine {
             let objects = tap.processObjects
             tap.stop()
             let fresh = ProcessTap(processObjects: objects, gain: gain)
+            fresh.metering = metering
             if fresh.start(outputDevice: device) {
                 taps[id] = fresh
             } else {

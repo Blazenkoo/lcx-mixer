@@ -16,6 +16,38 @@ final class Microphone {
     private var changedAt = Date.distantPast
     private var lastSet: (uid: String, muted: Bool)?
 
+    // MARK: Change notifications
+
+    /// Called (on the main thread) when the microphone changes or its mute changes, from anywhere.
+    var onChange: (() -> Void)?
+    private var deviceListener: CAPropertyListener?
+    private var stateListeners: [CAPropertyListener] = []
+
+    /// Listens for a switch to another microphone, and for mute or input-volume changes on the
+    /// current one, instead of checking on a timer.
+    func startListening() {
+        deviceListener = CAPropertyListener(CA.system, kAudioHardwarePropertyDefaultInputDevice) { [weak self] in
+            self?.listenToCurrentDevice()
+            self?.onChange?()
+        }
+        listenToCurrentDevice()
+    }
+
+    private func listenToCurrentDevice() {
+        let d = device
+        stateListeners = []
+        guard d != kAudioObjectUnknown else { return }
+        for element in Self.elements(d) {
+            for selector in [kAudioDevicePropertyMute, kAudioDevicePropertyVolumeScalar] {
+                if let listener = CAPropertyListener(d, selector, scope: kAudioObjectPropertyScopeInput, element: element, handler: { [weak self] in
+                    self?.onChange?()
+                }) {
+                    stateListeners.append(listener)
+                }
+            }
+        }
+    }
+
     var device: AudioObjectID { CA.get(CA.system, kAudioHardwarePropertyDefaultInputDevice, default: AudioObjectID(kAudioObjectUnknown)) }
     var deviceName: String { CA.deviceName(device) }
 

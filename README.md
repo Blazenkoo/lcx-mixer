@@ -31,7 +31,7 @@ https://github.com/user-attachments/assets/81d2e758-2983-4775-951c-c71e33042e1c
 - **Other controllers:** the Launch Control XL mk2 works out of the box; any other MIDI controller can be set up by moving its faders and pressing its buttons (MIDI learn). Mackie Control surfaces such as the Behringer X-Touch are supported experimentally, with motorised faders and scribble strips.
 - **Readable at any size:** four text sizes scale the mixer window, menu-bar panel, pop-up and Settings together.
 - **Clear feedback:** controller LEDs, a mixer window, a menu-bar panel and a short on-screen pop-up all show the same state.
-- **Light on your Mac:** with its windows closed, it uses around 2% of one CPU core, even with several sources playing. Nothing is drawn while it can't be seen.
+- **Light on your Mac:** with its windows closed, it uses practically no CPU, even with several sources playing. It wakes up only when something changes, and apps at full volume play completely untouched.
 - **Fully local:** no account, no server, no network connections (see *Security*).
 
 The full product specification, including assignment rules, LED colours and edge cases, is in [docs/SPEC.md](docs/SPEC.md).
@@ -103,10 +103,11 @@ LCX Mixer has **no network attack surface**: there is no server or web app, and 
 - The app and its browser bridge connect through a local socket that only your user account can access. Each side checks that the other runs under your account and carries the app's own code signature.
 - Site icons come from the browser's local icon cache. The app makes no network requests.
 - The only permission requested is System audio recording. No microphone access: muting the microphone only switches the input device's mute (or input volume) setting, and the app never listens to it.
-- **About the purple dot:** while a native app is on a channel, macOS shows a purple dot in the menu bar, its standard sign that an app is capturing system audio. That's LCX Mixer taking over the app's sound to set its volume. Click the dot or open Control Center to see the app's name. An orange dot would mean a microphone is in use, which LCX Mixer never does.
+- **About the purple dot:** while a native app's volume is below 100% or it's muted, macOS shows a purple dot in the menu bar, its standard sign that an app is capturing system audio. That's LCX Mixer taking over the app's sound to set its volume. At 100%, the app plays untouched and the dot goes away. Click the dot or open Control Center to see the app's name. An orange dot would mean a microphone is in use, which LCX Mixer never does.
 
 ## Known limitations
 
+- **Changing a native app's volume** from 100% (or back to it) can make a tiny pop or a split-second gap, as macOS hands the app's sound over to LCX Mixer (or back). It happens only at that moment, not while you adjust the volume.
 - **Browser tab meters** show activity, not real levels: drops land on the bar and ripple outward. macOS can't separate the sound of individual tabs, so the tab meter is deliberately unlike a real one.
 - **Twitch live streams:** "pause" silences the tab and keeps the stream live. A background tab can't reliably resume a paused live stream.
 - **Spotify** applies its own loudness curve to its volume slider, so the bottom half of the fader is gentler than on other sources.

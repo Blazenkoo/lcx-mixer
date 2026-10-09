@@ -308,7 +308,13 @@ async function healTabs() {
     }
   }
 }
-setInterval(healTabs, 1500);
+// Healing matters right after an update: check often for 2 minutes, then only now and then.
+(function scheduleHeal() {
+  const soon = Date.now() - workerStartedAt < 120000;
+  setTimeout(() => { healTabs().finally(scheduleHeal); }, soon ? 1500 : 15000);
+})();
+// A tab that starts playing gets checked straight away.
+chrome.tabs.onUpdated.addListener((tabId, info) => { if (info.audible) healTabs(); });
 
 // Auto-update: the app rewrites this folder on every launch. When build.json changes,
 // release soft-paused tabs and reload so the new code runs without a manual reload.
@@ -325,9 +331,9 @@ async function checkForUpdate() {
     }
   } catch (e) { /* no build.json: development copy */ }
 }
-setInterval(checkForUpdate, 5000);
+setInterval(checkForUpdate, 10000);
 
-// Heartbeat so play state and volumes stay fresh even without events.
-setInterval(() => scheduleSnapshot(), 2000);
+// Heartbeat so play state and volumes stay fresh even without events (changes also report at once).
+setInterval(() => scheduleSnapshot(), 5000);
 
 connect();

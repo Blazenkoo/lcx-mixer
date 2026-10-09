@@ -60,7 +60,10 @@
 
   const scan = () => document.querySelectorAll('video, audio').forEach(track);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scan);
-  const scanTimer = setInterval(() => { scan(); report(); }, 2000);
+  // Players are found as they start (the 'play' event and the play() hook above), plus one scan at
+  // start-up. The only timer is a light check-in for pages with a player, every 5 s, to catch
+  // changes a site makes without an event; pages without one do nothing at all.
+  const scanTimer = setInterval(() => { if (media.size || ytPlayer()) report(); }, 5000);
 
   function ytPlayer() {
     if (!isYouTube) return null;

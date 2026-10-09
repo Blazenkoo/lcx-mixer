@@ -6,18 +6,24 @@ import Foundation
 final class TapRenderState {
     let targetGain = UnsafeMutablePointer<Float>.allocate(capacity: 1)
     let level = UnsafeMutablePointer<Float>.allocate(capacity: 1)
+    /// Non-zero while levels are wanted (a meter is on screen); otherwise no level is computed.
+    let metering = UnsafeMutablePointer<Int32>.allocate(capacity: 1)
     var skipInputBuffers = 0
     private var currentGain: Float
 
     init(gain: Float) {
         targetGain.initialize(to: gain)
         level.initialize(to: 0)
-        currentGain = gain
+        metering.initialize(to: 0)
+        // Starts silent and ramps to the target over the first buffer (a few milliseconds):
+        // a short fade-in rather than a click when the app's sound moves into the tap.
+        currentGain = 0
     }
 
     deinit {
         targetGain.deallocate()
         level.deallocate()
+        metering.deallocate()
     }
 
     /// Finds logical channel `channel` in a buffer list, starting at buffer `start`.
@@ -63,6 +69,7 @@ final class TapRenderState {
         }
         let outChannels = min(2, TapRenderState.channelCount(outList, start: 0))
         let target = targetGain.pointee
+        let measure = metering.pointee != 0
         var peak: Float = 0
 
         if inChannels > 0 {
@@ -73,17 +80,24 @@ final class TapRenderState {
                 guard frames > 0 else { continue }
                 var gain = currentGain
                 let step = (target - currentGain) / Float(frames)
-                for f in 0..<frames {
-                    let sample = inp.ptr[f * inp.stride] * gain
-                    out.ptr[f * out.stride] = sample
-                    let a = abs(sample)
-                    if a > peak { peak = a }
-                    gain += step
+                if measure {
+                    for f in 0..<frames {
+                        let sample = inp.ptr[f * inp.stride] * gain
+                        out.ptr[f * out.stride] = sample
+                        let a = abs(sample)
+                        if a > peak { peak = a }
+                        gain += step
+                    }
+                } else {
+                    for f in 0..<frames {
+                        out.ptr[f * out.stride] = inp.ptr[f * inp.stride] * gain
+                        gain += step
+                    }
                 }
             }
         }
         currentGain = target
-        level.pointee = max(peak, level.pointee * 0.8)
+        if measure { level.pointee = max(peak, level.pointee * 0.8) } else { level.pointee = 0 }
     }
 }
 
@@ -94,7 +108,6 @@ final class ProcessTap {
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var procID: AudioDeviceIOProcID?
-    private let queue = DispatchQueue(label: "lcxmixer.tap", qos: .userInteractive)
 
     init(processObjects: [AudioObjectID], gain: Float) {
         self.processObjects = processObjects
@@ -109,6 +122,11 @@ final class ProcessTap {
     }
 
     var level: Float { state.level.pointee }
+
+    var metering: Bool {
+        get { state.metering.pointee != 0 }
+        set { state.metering.pointee = newValue ? 1 : 0 }
+    }
 
     func start(outputDevice: AudioObjectID) -> Bool {
         guard let outputUID = CA.deviceUID(outputDevice), !processObjects.isEmpty else { return false }
@@ -153,7 +171,10 @@ final class ProcessTap {
         state.skipInputBuffers = inputBuffersOfOutputDevice
 
         let renderState = state
-        status = AudioDeviceCreateIOProcIDWithBlock(&procID, aggregateID, queue) { _, input, _, output, _ in
+        // No dispatch queue: the block runs directly on the device's real-time audio thread, which is
+        // already part of the device's audio workgroup. (A queue would add a thread hop per buffer.)
+        // The render code is real-time safe: no memory allocation, no locks.
+        status = AudioDeviceCreateIOProcIDWithBlock(&procID, aggregateID, nil) { _, input, _, output, _ in
             renderState.render(input: input, output: output)
         }
         guard status == noErr, let procID else {

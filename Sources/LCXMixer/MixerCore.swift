@@ -6,6 +6,9 @@ import CoreAudio
 @MainActor
 final class LevelStore: ObservableObject {
     @Published var values: [String: Float] = [:]
+    /// Sources without a measurable level, shown as activity instead of a meter: browser tabs,
+    /// and native apps that play untouched at full volume (no tap, so nothing to measure).
+    @Published var activity: Set<String> = []
 }
 
 /// The single source of truth: sources, channels, soft takeover, master mode, controller and Chrome.
@@ -180,8 +183,15 @@ final class MixerCore: ObservableObject {
         permissionStatus = AudioCapturePermission.status()
         outputChanged()
 
-        mainTimer(every: 0.5) { [weak self] in self?.poll() }
-        mainTimer(every: 1.0 / 30.0) { [weak self] in self?.updateLevels() }
+        // Changes arrive as notifications; this slow check is only a safety net.
+        native.onChange = { [weak self] in self?.scheduleNativeCheck() }
+        native.startListening()
+        microphone.onChange = { [weak self] in self?.microphoneChanged() }
+        microphone.startListening()
+        listenToMasterVolume()
+        let safety = mainTimer(every: 10) { [weak self] in self?.poll() }
+        safety.tolerance = 2
+        poll()
 
         settings.$masterMode.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.masterModeChanged() } }
@@ -211,25 +221,18 @@ final class MixerCore: ObservableObject {
 
     // MARK: - Polling
 
+    /// Safety net, every 10 s: everything below also arrives as notifications.
     private func poll() {
         pollCount += 1
         pollNativeApps()
-
-        // Follows mute changes made elsewhere, and a switch to another microphone.
-        let mic = microphone.isMuted
-        if mic != micMuted { micMuted = mic }
-
-        if masterSupported, let v = engine.masterVolume, abs(v - masterVolume) > 0.01,
-           Date().timeIntervalSince(masterSetAt) > 1 {
-            masterVolume = v
-            if masterActive { faders[0].attached = false }
-        }
+        microphoneChanged()
+        masterVolumeChanged()
 
         let browserRunning = !ChromeProvider.runningBrowsers.isEmpty
         let problem = browserRunning && !browserConnected && Date().timeIntervalSince(launchedAt) > 10
         if problem != chromeProblem { chromeProblem = problem }
 
-        if pollCount % 4 == 0 && permissionStatus != .authorized {
+        if permissionStatus != .authorized {
             let status = AudioCapturePermission.status()
             if status != permissionStatus {
                 permissionStatus = status
@@ -255,8 +258,9 @@ final class MixerCore: ObservableObject {
                 s.bundleIDs = app.bundleIDs
                 s.detail = detail
                 if s != sources[id] { sources[id] = s }
-                if native.isControlling(id) {
-                    native.control(id, processObjects: app.processObjects, gain: effectiveGain(s))
+                if native.isControlling(id) || channel(of: id) != nil || listMuted.contains(id),
+                   permissionStatus == .authorized {
+                    native.apply(id, processObjects: app.processObjects, gain: effectiveGain(s))
                 }
             } else if app.isRunningOutput || isHeld(id, host: "") {
                 var s = Source(
@@ -277,25 +281,78 @@ final class MixerCore: ObservableObject {
         }
     }
 
-    /// Set by the app: true while a window or panel showing meters is on screen.
+    /// Set by the app: true while a window or panel showing meters is on screen. The meter timer
+    /// and the taps' level measurement run only then.
     var metersWanted = false {
-        didSet { if !metersWanted && !levels.values.isEmpty { levels.values = [:] } }
+        didSet {
+            guard metersWanted != oldValue else { return }
+            native.setMetering(metersWanted)
+            meterTimer?.invalidate()
+            meterTimer = nil
+            if metersWanted {
+                meterTimer = mainTimer(every: 1.0 / 30.0) { [weak self] in self?.updateLevels() }
+                updateLevels()
+            } else {
+                if !levels.values.isEmpty { levels.values = [:] }
+                if !levels.activity.isEmpty { levels.activity = [] }
+            }
+        }
     }
+    private var meterTimer: Timer?
 
     private func updateLevels() {
-        // Nobody can see the meters: skip the work (and the redraws it would cause in hidden windows).
-        guard metersWanted else { return }
         var values: [String: Float] = [:]
+        var activity = Set<String>()
         for (id, s) in sources {
+            let audible = s.isAudible && !s.isMuted && !muteAll && !listMuted.contains(id)
             switch s.kind {
-            case .app:
+            case .app where native.isControlling(id):
                 values[id] = min(1, native.level(id))
-            case .tab:
-                // Not a level: just "audible", shown as activity rain.
-                values[id] = s.isAudible && !s.isMuted && !muteAll && !listMuted.contains(id) ? 1 : 0
+            case .app, .tab:
+                // No measurable level: just "audible", shown as activity drops.
+                values[id] = audible ? 1 : 0
+                activity.insert(id)
             }
         }
         if values != levels.values { levels.values = values }
+        if activity != levels.activity { levels.activity = activity }
+    }
+
+    // MARK: - Change notifications
+
+    private var nativeCheckScheduled = false
+
+    /// Bursts of notifications (an app opening several audio processes) become one check.
+    private func scheduleNativeCheck() {
+        guard !nativeCheckScheduled else { return }
+        nativeCheckScheduled = true
+        after(0.1) { [weak self] in
+            guard let self else { return }
+            self.nativeCheckScheduled = false
+            self.pollNativeApps()
+        }
+    }
+
+    private func microphoneChanged() {
+        let mic = microphone.isMuted
+        if mic != micMuted { micMuted = mic }
+    }
+
+    private var masterListener: CAPropertyListener?
+
+    /// Follows the output device's volume (master mode), on change rather than on a timer.
+    private func listenToMasterVolume() {
+        masterListener = CA.masterVolumeListener(engine.outputDevice) { [weak self] in
+            self?.masterVolumeChanged()
+        }
+    }
+
+    private func masterVolumeChanged() {
+        if masterSupported, let v = engine.masterVolume, abs(v - masterVolume) > 0.01,
+           Date().timeIntervalSince(masterSetAt) > 1 {
+            masterVolume = v
+            if masterActive { faders[0].attached = false }
+        }
     }
 
     // MARK: - Assignment
@@ -412,7 +469,7 @@ final class MixerCore: ObservableObject {
                 s.permissionNeeded = false
                 sources[id] = s
             }
-            native.control(id, processObjects: s.processObjects, gain: effectiveGain(s))
+            native.apply(id, processObjects: s.processObjects, gain: effectiveGain(s))
         }
     }
 
@@ -647,7 +704,7 @@ final class MixerCore: ObservableObject {
         sources[id] = s
         settings.remember(volume: s.volume, for: s.rememberKey)
         switch s.kind {
-        case .app: native.setGain(id, effectiveGain(s))
+        case .app: native.apply(id, processObjects: s.processObjects, gain: effectiveGain(s))
         case .tab: sendTabVolume(s)
         }
     }
@@ -655,7 +712,7 @@ final class MixerCore: ObservableObject {
     private func applyGainAndMute(_ id: String) {
         guard let s = sources[id] else { return }
         switch s.kind {
-        case .app: native.setGain(id, effectiveGain(s))
+        case .app: native.apply(id, processObjects: s.processObjects, gain: effectiveGain(s))
         case .tab: sendTabMute(s)
         }
     }
@@ -1079,6 +1136,7 @@ final class MixerCore: ObservableObject {
     // MARK: - Output device and master mode
 
     private func outputChanged() {
+        listenToMasterVolume()
         outputName = engine.outputName
         masterSupported = engine.masterSupported
         masterVolume = engine.masterVolume ?? 0

@@ -84,9 +84,36 @@ enum CA {
         return value
     }
 
+    /// Listens for changes to the device's master volume.
+    static func masterVolumeListener(_ device: AudioObjectID, _ handler: @escaping @MainActor () -> Void) -> CAPropertyListener? {
+        CAPropertyListener(device, kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+                           scope: kAudioDevicePropertyScopeOutput, handler: handler)
+    }
+
     static func setMasterVolume(_ device: AudioObjectID, _ volume: Float) {
         var addr = address(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, kAudioDevicePropertyScopeOutput)
         var value = Float32(max(0, min(1, volume)))
         AudioObjectSetPropertyData(device, &addr, 0, nil, UInt32(MemoryLayout<Float32>.size), &value)
     }
+}
+
+/// Calls `handler` on the main thread whenever a Core Audio property changes, until released.
+/// Lets the app sleep until something actually happens, instead of asking on a timer.
+final class CAPropertyListener {
+    private let object: AudioObjectID
+    private var address: AudioObjectPropertyAddress
+    private let block: AudioObjectPropertyListenerBlock
+
+    init?(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector,
+          scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal,
+          element: AudioObjectPropertyElement = kAudioObjectPropertyElementMain,
+          handler: @escaping @MainActor () -> Void) {
+        self.object = object
+        self.address = AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: element)
+        guard object != kAudioObjectUnknown, AudioObjectHasProperty(object, &address) else { return nil }
+        self.block = { _, _ in MainActor.assumeIsolated { handler() } }
+        guard AudioObjectAddPropertyListenerBlock(object, &address, DispatchQueue.main, block) == noErr else { return nil }
+    }
+
+    deinit { AudioObjectRemovePropertyListenerBlock(object, &address, DispatchQueue.main, block) }
 }

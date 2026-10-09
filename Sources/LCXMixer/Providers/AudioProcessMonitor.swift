@@ -33,6 +33,37 @@ final class AudioProcessMonitor {
     private var nameCache: [pid_t: String] = [:]
     private var iconCache: [pid_t: NSImage] = [:]
     private var processInfoCache: [AudioObjectID: (pid: pid_t, bundle: String)] = [:]
+
+    /// Called (on the main thread) when an app starts or stops sound, or an app quits.
+    var onChange: (() -> Void)?
+    private var listListener: CAPropertyListener?
+    private var runningListeners: [AudioObjectID: CAPropertyListener] = [:]
+    private var workspaceObservers: [NSObjectProtocol] = []
+
+    /// Starts listening: Core Audio says when audio processes come and go or start and stop playing,
+    /// and macOS says when an app quits. Nothing needs checking on a timer.
+    func startListening() {
+        listListener = CAPropertyListener(CA.system, kAudioHardwarePropertyProcessObjectList) { [weak self] in
+            self?.onChange?()
+        }
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didTerminateApplicationNotification, NSWorkspace.didLaunchApplicationNotification] {
+            workspaceObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.onChange?() }
+            })
+        }
+    }
+
+    /// Keeps one "is it playing" listener per audio process.
+    private func listenForRunning(_ objects: [AudioObjectID]) {
+        for object in objects where runningListeners[object] == nil {
+            runningListeners[object] = CAPropertyListener(object, kAudioProcessPropertyIsRunningOutput) { [weak self] in
+                self?.onChange?()
+            }
+        }
+        let live = Set(objects)
+        runningListeners = runningListeners.filter { live.contains($0.key) }
+    }
     private let ownPID = ProcessInfo.processInfo.processIdentifier
 
     init(settings: AppSettings) { self.settings = settings }
@@ -95,6 +126,7 @@ final class AudioProcessMonitor {
         var livePIDs = Set<pid_t>()
 
         let objects = CA.objectIDs(CA.system, kAudioHardwarePropertyProcessObjectList)
+        listenForRunning(objects)
         for object in objects {
             // A process object's PID and bundle never change: read them once. Only "is it playing" is live.
             let info: (pid: pid_t, bundle: String)
