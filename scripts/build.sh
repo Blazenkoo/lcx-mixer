@@ -26,7 +26,9 @@ cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 cp -R "$ROOT/Extension" "$APP/Contents/Resources/ChromeExtension"
 BUILD_ID="$(date +%Y%m%d%H%M%S)"
 EXT="$APP/Contents/Resources/ChromeExtension"
-sed -i '' "s/__BUILD_ID__/$BUILD_ID/g" "$EXT/background.js" "$EXT/main-world.js" "$EXT/isolated.js"
+# Every script carries the build ID (the site files under sites/ too), so copies left in a tab
+# by an older build never answer this one.
+find "$EXT" -name '*.js' -exec sed -i '' "s/__BUILD_ID__/$BUILD_ID/g" {} +
 printf '{"build":"%s"}\n' "$BUILD_ID" > "$EXT/build.json"
 echo "    extension build $BUILD_ID"
 if [ -d "$ROOT/Resources/AppIcon.iconset" ]; then

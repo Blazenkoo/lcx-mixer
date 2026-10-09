@@ -1,111 +1,10 @@
 // Runs the extension's page scripts in a pretend page, to catch start-up and take-over errors
-// before they reach a browser. Run with: node --test Tests/extension/
+// before they reach a browser. Run with: node --test Tests/extension/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
-import { fileURLToPath } from 'node:url';
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const extension = path.join(root, 'Extension');
-const manifest = JSON.parse(fs.readFileSync(path.join(extension, 'manifest.json'), 'utf8'));
-// The scripts that run in the page's own world, in the order the browser loads them.
-const pageScripts = manifest.content_scripts.find((c) => c.world === 'MAIN').js;
-
-class Target {
-  #listeners = new Map();
-  addEventListener(type, fn) {
-    if (!this.#listeners.has(type)) this.#listeners.set(type, []);
-    this.#listeners.get(type).push(fn);
-  }
-  removeEventListener(type, fn) {
-    const list = this.#listeners.get(type) || [];
-    const i = list.indexOf(fn);
-    if (i >= 0) list.splice(i, 1);
-  }
-  dispatchEvent(event) {
-    if (!event.target) event.target = this;
-    for (const fn of [...(this.#listeners.get(event.type) || [])]) fn.call(this, event);
-    return true;
-  }
-}
-
-/** A page with no site players: just video and audio elements, a console and no real timers. */
-function makePage({ host = 'www.example.com', pathname = '/' } = {}) {
-  const logs = [];
-  class FakeEvent {
-    constructor(type, init = {}) { this.type = type; this.detail = init.detail; this.target = null; }
-  }
-  class HTMLMediaElement extends Target {
-    constructor() {
-      super();
-      Object.assign(this, { paused: true, ended: false, isConnected: true, volume: 1, playbackRate: 1, duration: 100, readyState: 4 });
-    }
-    play() { this.paused = false; return Promise.resolve(); }
-    pause() { this.paused = true; }
-  }
-  class HTMLInputElement {}
-  Object.defineProperty(HTMLInputElement.prototype, 'value', {
-    get() { return this._value ?? ''; }, set(v) { this._value = v; }, configurable: true,
-  });
-
-  const players = [];
-  const document = new Target();
-  document.readyState = 'complete';
-  document.querySelectorAll = (q) => (q.includes('video') ? players : []);
-  document.querySelector = () => null;
-  document.getElementById = () => null;
-
-  const page = {
-    document,
-    location: { hostname: host, pathname },
-    HTMLMediaElement, HTMLInputElement, CustomEvent: FakeEvent, Event: FakeEvent, MouseEvent: FakeEvent,
-    console: {
-      debug: (...a) => logs.push(a.map(String).join(' ')),
-      error: (...a) => logs.push('ERROR ' + a.map(String).join(' ')),
-      log() {}, info() {}, warn() {},
-    },
-    setInterval: () => 1, clearInterval() {}, setTimeout: () => 1, clearTimeout() {},
-  };
-  page.window = page;
-  page.top = page;
-  const context = vm.createContext(page);
-
-  return {
-    logs,
-    errors: () => logs.filter((l) => l.startsWith('ERROR')),
-    /** A video element already in the page, playing unless told otherwise. */
-    addVideo({ playing = true } = {}) {
-      const el = new HTMLMediaElement();
-      el.paused = !playing;
-      players.push(el);
-      return el;
-    },
-    /** An audio element the site never attaches to the page (how Spotify plays). */
-    detachedAudio() {
-      const el = new HTMLMediaElement();
-      el.isConnected = false;
-      return el;
-    },
-    /** Loads the page scripts as one build of the extension. */
-    load(build) {
-      for (const file of pageScripts) {
-        const source = fs.readFileSync(path.join(extension, file), 'utf8').replaceAll('__BUILD_ID__', build);
-        vm.runInContext(source, context, { filename: file });
-      }
-    },
-    /** Every state report a build sends from now on. */
-    states(build) {
-      const seen = [];
-      document.addEventListener('lcxmixer:state:' + build, (e) => seen.push(JSON.parse(e.detail)));
-      return seen;
-    },
-    command(build, message) {
-      document.dispatchEvent(new FakeEvent('lcxmixer:cmd:' + build, { detail: JSON.stringify(message) }));
-    },
-  };
-}
+import { makePage, makeButton, extension, pageScripts } from './fake-page.mjs';
 
 test('starts fresh and reports the playing video', () => {
   const page = makePage();
@@ -168,4 +67,32 @@ test('Twitch live streams are reported as live, recordings are not', () => {
   recording.load('A');
   assert.equal(recordingStates.at(-1).twitchLive, false);
   assert.deepEqual([...live.errors(), ...recording.errors()], []);
+});
+
+test('after a take-over the new build uses its own site file', () => {
+  const button = makeButton({ 'data-a-player-state': 'paused' });
+  const page = makePage({
+    host: 'www.twitch.tv', pathname: '/somechannel',
+    elements: { 'button[data-a-target="player-play-pause-button"]': button },
+  });
+  page.addVideo();
+  page.load('OLD');
+  page.load('NEW');
+  const s = page.state('NEW');
+  assert.equal(s.twitchLive, true);
+  assert.equal(s.playing, false, "Twitch's own button says paused");
+  assert.deepEqual(page.errors(), []);
+});
+
+test('every page script carries the build ID', () => {
+  for (const file of [...pageScripts, 'isolated.js', 'background.js']) {
+    const source = fs.readFileSync(path.join(extension, file), 'utf8');
+    assert.ok(source.includes("'__BUILD_ID__'"), file);
+  }
+});
+
+test('the background worker re-injects exactly the manifest\'s page scripts', () => {
+  const source = fs.readFileSync(path.join(extension, 'background.js'), 'utf8');
+  assert.match(source, /const PAGE_SCRIPTS = chrome\.runtime\.getManifest\(\)/);
+  assert.doesNotMatch(source, /files: \['main-world\.js'\]/);
 });

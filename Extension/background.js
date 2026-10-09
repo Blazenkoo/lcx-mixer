@@ -1,6 +1,9 @@
 // LCX Mixer background worker: reports Chrome tabs to the Mac app and carries out its commands.
 const HOST = 'org.lcxmixer.app';
 const BUILD = '__BUILD_ID__'; // replaced by the build script
+// The scripts that run in the page's own world (each site's file, then main-world.js), in the
+// manifest's order, for injecting into tabs that were already open.
+const PAGE_SCRIPTS = chrome.runtime.getManifest().content_scripts.find((c) => c.world === 'MAIN').js;
 
 // Twitch live streams can't be resumed reliably while their tab is in the background, so
 // "pause" there silences the tab and keeps the stream live; "play" unsilences it.
@@ -246,7 +249,7 @@ async function injectExisting() {
   const tabs = await chrome.tabs.query({});
   for (const t of tabs) {
     if (!t.url || !/^https?:/.test(t.url)) continue;
-    chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: ['main-world.js'], world: 'MAIN' })
+    chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: PAGE_SCRIPTS, world: 'MAIN' })
       .catch((e) => console.info('[LCX Mixer] inject main failed', t.id, String(e)));
     chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: ['isolated.js'] })
       .catch((e) => console.info('[LCX Mixer] inject isolated failed', t.id, String(e)));
@@ -298,7 +301,7 @@ async function healTabs() {
     healAttempts.set(t.id, a);
     log('tab never reported; injecting again, attempt', a.count, t.id, t.url);
     try {
-      await chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: ['main-world.js'], world: 'MAIN' });
+      await chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: PAGE_SCRIPTS, world: 'MAIN' });
       await chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: ['isolated.js'] });
     } catch (e) {
       log('cannot inject into', t.id, t.url, String(e));

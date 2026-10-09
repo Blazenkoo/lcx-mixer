@@ -1,5 +1,7 @@
 // Runs in the page's own JavaScript world so it can reach site players (YouTube API,
 // Spotify's detached audio element). Talks to isolated.js through DOM events with string payloads.
+// What's special about a site lives in sites/<site>.js, loaded just before this file; this file
+// works with any page's media elements and asks the site's file first where it has a say.
 (() => {
   // Each build replaces __BUILD_ID__; a newer copy shuts the older one down and takes over its media list.
   const BUILD = '__BUILD_ID__';
@@ -12,12 +14,6 @@
   const STATE_EVENT = 'lcxmixer:state:' + BUILD;
   const handed = Array.isArray(window.__lcxMixerMedia) ? window.__lcxMixerMedia : [];
 
-  const host = location.hostname;
-  const isYouTube = /(^|\.)youtube(-nocookie)?\.com$/.test(host);
-  const isSpotify = /(^|\.)spotify\.com$/.test(host);
-  const isTwitch = /(^|\.)twitch\.tv$/.test(host);
-  const isTwitchLive = () => isTwitch && !/\/(videos|clip)\//.test(location.pathname);
-
   const media = new Set();
   let lastPlayed = null;
   let desiredVolume = null;   // last volume the app set
@@ -25,6 +21,30 @@
   let reapplyUntil = 0;       // window after a track change where a site reset is undone
 
   const now = () => Date.now();
+
+  // This page's site file (sites/*.js), if it has one. Where a site method returns undefined or
+  // false, it has nothing special to do and the general code below takes over.
+  const site = findSite();
+
+  function findSite() {
+    const helpers = {
+      setRange: (input, v) => setRange(input, v),
+      rangeValue: (input) => rangeValue(input),
+      setValue: (input, v) => nativeValueSetter.call(input, v),
+      pointer: (type, target, x, y) => pointer(type, target, x, y),
+      report: () => report(),
+    };
+    const makers = Object.values((window.__lcxMixerSites || {})[BUILD] || {});
+    for (const make of makers) {
+      try {
+        const found = make(location.hostname, helpers);
+        if (found) return found;
+      } catch (e) {
+        console.error('[LCX Mixer] site script failed', BUILD, e);
+      }
+    }
+    return {};
+  }
 
   function track(el) {
     if (stopped || !el || media.has(el)) return;
@@ -63,13 +83,7 @@
   // Players are found as they start (the 'play' event and the play() hook above), plus one scan at
   // start-up. The only timer is a light check-in for pages with a player, every 5 s, to catch
   // changes a site makes without an event; pages without one do nothing at all.
-  const scanTimer = setInterval(() => { if (media.size || ytPlayer()) report(); }, 5000);
-
-  function ytPlayer() {
-    if (!isYouTube) return null;
-    const p = document.getElementById('movie_player');
-    return p && typeof p.setVolume === 'function' && typeof p.getVolume === 'function' ? p : null;
-  }
+  const scanTimer = setInterval(() => { if (media.size || site.hasPlayer?.()) report(); }, 5000);
 
   function liveMedia() {
     return [...media].filter((el) => el.isConnected || !el.paused || el === lastPlayed);
@@ -83,39 +97,18 @@
     return list[0] || null;
   }
 
+  // The site's own answer comes first; undefined means "nothing special here".
   function isPlaying() {
-    if (isTwitch) {
-      const btn = twitchButton();
-      const state = btn && btn.getAttribute('data-a-player-state');
-      if (state === 'playing') return true;
-      if (state === 'paused') return false;
-    }
-    const yt = ytPlayer();
-    if (yt && typeof yt.getPlayerState === 'function') return yt.getPlayerState() === 1;
+    const own = site.isPlaying?.();
+    if (own !== undefined) return own;
     return liveMedia().some((el) => !el.paused && !el.ended && el.readyState > 1);
   }
 
   function currentVolume() {
-    if (isSpotify) return spotifySliderValue();
-    if (isTwitch) {
-      const input = twitchVolumeInput();
-      const v = input && rangeValue(input);
-      if (v !== null && v !== undefined) return v;
-    }
-    const yt = ytPlayer();
-    if (yt) return yt.getVolume() / 100;
+    const own = site.volume?.();
+    if (own !== undefined) return own;
     const el = primary();
     return el ? el.volume : null;
-  }
-
-  // Spotify: drive its own volume control so the page's UI and state follow the fader.
-  // 1) the slider's hidden range input (React listens to its input/change events)
-  // 2) fallback: pointer events on the visible bar
-  function spotifyRangeInput() {
-    const root = document.querySelector('[data-testid="volume-bar"]') ||
-      document.querySelector('[aria-label*="olume" i] input[type="range"]')?.closest('div');
-    if (!root) return null;
-    return root.querySelector('input[type="range"]');
   }
 
   const nativeValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -138,91 +131,21 @@
     return isFinite(v) ? Math.max(0, Math.min(1, v)) : null;
   }
 
-  function setSpotifyRange(v) {
-    const input = spotifyRangeInput();
-    if (!input) return false;
-    setRange(input, v);
-    return true;
-  }
-
-  // Twitch: its player volume slider. If Twitch renames it, volume still works through the video element.
-  function twitchVolumeInput() {
-    return document.querySelector('input[data-a-target="player-volume-slider"]') ||
-      document.querySelector('[data-a-target="player-volume-slider"] input[type="range"]') ||
-      document.querySelector('.video-player input[type="range"][aria-label*="olume" i]');
-  }
-
-  function spotifyVolumeBar() {
-    const root = document.querySelector('[data-testid="volume-bar"]');
-    if (!root) return null;
-    return root.querySelector('[data-testid="progress-bar"]') || null;
-  }
-
   function pointer(type, target, x, y) {
     const init = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0, buttons: type.endsWith('up') ? 0 : 1 };
     target.dispatchEvent(new MouseEvent(type, init));
   }
 
-  let spotifyMethodLogged = false;
-  function setSpotifySlider(v) {
-    let method = 'none';
-    try {
-      if (setSpotifyRange(v)) {
-        method = 'range';
-      } else {
-        const bar = spotifyVolumeBar();
-        const r = bar && bar.getBoundingClientRect();
-        if (r && r.width > 4) {
-          const x = r.left + Math.max(0.001, Math.min(0.999, v)) * r.width;
-          const y = r.top + r.height / 2;
-          pointer('mousedown', bar, x, y);
-          pointer('mouseup', bar, x, y);
-          pointer('click', bar, x, y);
-          method = 'mouse';
-        }
-      }
-    } catch (e) {
-      console.debug('[LCX Mixer] Spotify volume failed', e);
-    }
-    if (!spotifyMethodLogged) {
-      spotifyMethodLogged = true;
-      console.debug('[LCX Mixer] Spotify volume method:', method);
-    }
-    return method !== 'none';
-  }
-
-  // Spotify applies its own curve from slider to loudness, so it gets the fader *position*
-  // and is never given a raw element volume (that fought Spotify and caused stuttering).
-  let desiredPosition = null;
-  function applySpotify(position) {
-    applyingUntil = now() + 600;
-    desiredPosition = position;
-    setSpotifySlider(position);
-  }
-
-  function spotifySliderValue() {
-    const input = spotifyRangeInput();
-    return input ? rangeValue(input) : null;
-  }
-
   function applyVolume(v) {
-    if (isSpotify) return; // handled by applySpotify
+    if (site.volumeIsPosition) return; // such a site gets fader positions instead (setPosition)
     applyingUntil = now() + 600;
-    const yt = ytPlayer();
-    if (yt) {
-      yt.setVolume(Math.round(v * 100));
-      return;
-    }
-    if (isTwitch) {
-      const input = twitchVolumeInput();
-      if (input) { try { setRange(input, v); } catch (e) { /* fall through to the element */ } }
-    }
+    if (site.setVolume?.(v)) return; // the site's own player took it
     media.forEach((el) => { try { el.volume = v; } catch (e) { /* ignore */ } });
   }
 
   function onVolumeChange() {
     if (now() < applyingUntil) return;
-    if (isSpotify) { setTimeout(report, 50); return; } // Spotify keeps its volume across tracks itself
+    if (site.onPageVolumeChange?.()) return;
     if (desiredVolume !== null && now() < reapplyUntil) {
       // The site reset the volume on a track or quality change: put ours back.
       applyVolume(desiredVolume);
@@ -233,26 +156,8 @@
     report();
   }
 
-  function twitchButton() {
-    return document.querySelector('button[data-a-target="player-play-pause-button"]');
-  }
-
   function togglePlay() {
-    if (isTwitch) {
-      // Live streams are "paused" by the background worker (tab silenced, stream stays live).
-      // This path only runs when the player itself is paused, e.g. by Twitch's own button.
-      const btn = twitchButton();
-      if (btn) { btn.click(); return; }
-    }
-    if (isSpotify) {
-      const btn = document.querySelector('[data-testid="control-button-playpause"]');
-      if (btn) { btn.click(); return; }
-    }
-    const yt = ytPlayer();
-    if (yt && typeof yt.getPlayerState === 'function') {
-      if (yt.getPlayerState() === 1) yt.pauseVideo(); else yt.playVideo();
-      return;
-    }
+    if (site.togglePlay?.()) return;
     const playing = liveMedia().filter((el) => !el.paused && !el.ended);
     if (playing.length) {
       playing.forEach((el) => el.pause());
@@ -264,73 +169,39 @@
 
   // ---- Playback speed and seeking (knobs) ----
 
-  function spotifyProgressInput() {
-    return document.querySelector('[data-testid="playback-progressbar"] input[type="range"]');
-  }
-
-  function isYouTubeLive() {
-    const yt = ytPlayer();
-    try { return !!(yt && yt.getVideoData && yt.getVideoData().isLive); } catch (e) { return false; }
-  }
+  const hasDuration = (el) => !!el && isFinite(el.duration) && el.duration > 0;
 
   function canSpeed() {
-    if (isSpotify || isTwitchLive() || isYouTubeLive()) return false;
-    if (ytPlayer()) return true;
-    const el = primary();
-    return !!el && isFinite(el.duration) && el.duration > 0;
+    const own = site.canSpeed?.();
+    return own !== undefined ? own : hasDuration(primary());
   }
 
   function canSeek() {
-    if (isTwitchLive()) return false;
-    if (isSpotify) return !!spotifyProgressInput();
-    if (ytPlayer()) return true;
-    const el = primary();
-    return !!el && isFinite(el.duration) && el.duration > 0;
+    const own = site.canSeek?.();
+    return own !== undefined ? own : hasDuration(primary());
   }
 
   function currentSpeed() {
-    const yt = ytPlayer();
-    if (yt && typeof yt.getPlaybackRate === 'function') return yt.getPlaybackRate();
+    const own = site.speed?.();
+    if (own !== undefined) return own;
     const el = primary();
     return el ? el.playbackRate : 1;
   }
 
   function setSpeed(rate) {
-    const yt = ytPlayer();
-    if (yt && typeof yt.setPlaybackRate === 'function') {
-      yt.setPlaybackRate(rate);
-      return;
-    }
+    if (site.setSpeed?.(rate)) return;
     liveMedia().forEach((el) => { try { el.playbackRate = rate; } catch (e) { /* ignore */ } });
   }
 
   function seekBy(seconds) {
-    if (isSpotify) {
-      const input = spotifyProgressInput();
-      if (!input) return;
-      const max = parseFloat(input.max || '0');
-      const next = Math.max(0, Math.min(max - 1000, parseFloat(input.value || '0') + seconds * 1000));
-      input.step = 'any';
-      nativeValueSetter.call(input, String(next));
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-      return;
-    }
-    const yt = ytPlayer();
-    if (yt && typeof yt.seekTo === 'function') {
-      yt.seekTo(Math.max(0, yt.getCurrentTime() + seconds), true);
-      return;
-    }
+    if (site.seekBy?.(seconds)) return;
     const el = primary();
     if (!el || !isFinite(el.duration)) return;
     el.currentTime = Math.max(0, Math.min(el.duration - 0.5, el.currentTime + seconds));
   }
 
   function jumpLive() {
-    if (isTwitch) {
-      const live = document.querySelector('[data-a-target="player-seekbar-live-button"], button[aria-label*="live" i][data-a-target]');
-      if (live) { live.click(); return; }
-    }
+    if (site.jumpLive?.()) return;
     const el = primary();
     if (!el) return;
     try {
@@ -343,19 +214,18 @@
 
   let lastReport = '';
   function report() {
-    const yt = ytPlayer();
-    const hasMedia = !!yt || liveMedia().length > 0;
+    const hasMedia = !!site.hasPlayer?.() || liveMedia().length > 0;
     const vol = hasMedia ? currentVolume() : null;
     const state = {
       hasMedia,
       playing: hasMedia && isPlaying(),
       volume: vol === null ? null : Math.round(vol * 1000) / 1000,
       canVolume: hasMedia,
-      volumeIsPosition: isSpotify,
+      volumeIsPosition: !!site.volumeIsPosition,
       canSpeed: hasMedia && canSpeed(),
       canSeek: hasMedia && canSeek(),
       speed: hasMedia ? Math.round(currentSpeed() * 100) / 100 : 1,
-      twitchLive: isTwitchLive(),
+      twitchLive: !!site.isLiveStream?.(),
     };
     const json = JSON.stringify(state);
     if (json === lastReport) return;
@@ -373,8 +243,9 @@
         report();
         break;
       case 'setVolume':
-        if (isSpotify && typeof msg.position === 'number') {
-          applySpotify(Math.max(0, Math.min(1, msg.position)));
+        if (site.volumeIsPosition && typeof msg.position === 'number') {
+          applyingUntil = now() + 600;
+          site.setPosition(Math.max(0, Math.min(1, msg.position)));
           setTimeout(() => { lastReport = ''; report(); }, 350);
         } else if (typeof msg.value === 'number') {
           desiredVolume = Math.max(0, Math.min(1, msg.value));
