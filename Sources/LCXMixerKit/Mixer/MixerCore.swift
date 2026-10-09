@@ -145,13 +145,7 @@ final class MixerCore: ObservableObject {
 
     func status(of s: Source, onChannel: Bool) -> ChannelStatus {
         if s.isMuted || (muteAll && onChannel) { return .muted }
-        return unmutedStatus(of: s)
-    }
-
-    private func unmutedStatus(of s: Source) -> ChannelStatus {
-        if s.kind == .app { return .appActive }
-        if s.canPlayPause { return s.isPlaying ? .playing : .paused }
-        return s.isAudible ? .playing : .paused
+        return s.unmutedStatus
     }
 
     func position(of s: Source) -> Float { settings.position(forGain: s.volume) }
@@ -1095,49 +1089,17 @@ final class MixerCore: ObservableObject {
         }
     }
 
-    /// Works out what every light should show and hands it to the controller driver.
+    /// Gathers what sits on each channel; LightComposer works out the lights for the driver.
     func refreshLEDs() {
         guard controllerConnected else { return }
         let now = Date()
-        var lights = ControllerLights(channels: [])
-        for ch in 0..<MixerCore.channelCount {
-            var c = ChannelLights()
-            if masterActive && ch == 0 {
-                c.fader = masterVolume
-                c.name = "Master"
-                c.detail = percent(masterVolume)
-            } else if let s = source(onChannel: ch) {
-                c.fader = position(of: s)
-                c.name = s.displayName
-                c.detail = s.isMuted || muteAll ? "Muted" : percent(position(of: s))
-                if s.canSpeed {
-                    if s.speed > 1.001 { c.speedKnob = .green } else if s.speed < 0.999 { c.speedKnob = .red }
-                }
-                if s.canSeek && seekTimers[ch] != nil {
-                    c.seekKnob = seekDeflection[ch] > 0 ? .green : .red
-                }
-                if s.kind == .tab {
-                    c.playButton = unmutedStatus(of: s) == .playing ? .green : .amber
-                } else {
-                    // Native apps have no play/pause; dim green says "in use" without promising one.
-                    c.playButton = .greenDim
-                }
-                if let until = blinkUntil[ch], until > now { c.playButton = .greenBlink }
-                // Lost its connection to the extension: blink, so a 3-second hold of play reloads it.
-                if s.needsReload { c.playButton = .amberBlink; c.detail = "Reload" }
-                if muteAll {
-                    c.muteButton = .redBlink
-                } else if s.isMuted {
-                    c.muteButton = .red
-                } else if s.kind == .tab && !s.canSetVolume {
-                    c.muteButton = .redDim
-                }
-            }
-            lights.channels.append(c)
+        let channels = (0..<MixerCore.channelCount).map { ch -> LightComposer.Channel in
+            if masterActive && ch == 0 { return .master(volume: masterVolume) }
+            guard let s = source(onChannel: ch) else { return .empty }
+            return .source(s, position: position(of: s), blinking: blinkUntil[ch].map { $0 > now } ?? false,
+                           seeking: seekTimers[ch] != nil ? seekDeflection[ch] : nil)
         }
-        lights.muteAll = muteAll ? .yellow : .off
-        lights.micMute = micMuted ? .red : .off
-        controller.show(lights)
+        controller.show(LightComposer.lights(for: channels, muteAll: muteAll, micMuted: micMuted))
     }
 
     // MARK: - Output device and master mode
@@ -1394,6 +1356,4 @@ final class MixerCore: ObservableObject {
             return best.map(cocoa)
         }
     }
-
-    private func percent(_ p: Float) -> String { "\(Int((p * 100).rounded()))%" }
 }

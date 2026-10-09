@@ -40,6 +40,9 @@ enum AppPaths {
     static var extensionFolder: URL { support.appendingPathComponent("ChromeExtension", isDirectory: true) }
 }
 
+/// A 0…1 level as a whole percentage, e.g. "71%".
+func percent(_ p: Float) -> String { "\(Int((p * 100).rounded()))%" }
+
 func log(_ items: Any...) {
     let line = items.map { "\($0)" }.joined(separator: " ")
     NSLog("[LCXMixer] %@", line)

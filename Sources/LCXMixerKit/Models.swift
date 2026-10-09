@@ -57,6 +57,15 @@ struct Source: Identifiable, Equatable {
     }
 }
 
+extension Source {
+    /// Playing or paused, leaving mute aside. Native apps have no play/pause: they're just "on".
+    var unmutedStatus: ChannelStatus {
+        if kind == .app { return .appActive }
+        if canPlayPause { return isPlaying ? .playing : .paused }
+        return isAudible ? .playing : .paused
+    }
+}
+
 enum ChannelStatus: Equatable {
     case empty, master, playing, paused, appActive, muted
 
