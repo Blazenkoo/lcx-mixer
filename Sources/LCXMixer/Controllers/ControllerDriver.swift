@@ -27,6 +27,11 @@ struct ChannelLights: Equatable {
     var muteButton: LightColor = .off
     var seekKnob: LightColor = .off
     var speedKnob: LightColor = .off
+    /// Where a motorised fader should sit (0…1); devices without motors ignore it.
+    var fader: Float?
+    /// Short texts for devices with displays: the source's name, and its volume or state.
+    var name = ""
+    var detail = ""
 }
 
 /// Everything a controller can light up, as the mixer wants it right now.
@@ -53,4 +58,10 @@ protocol ControllerDriver: AnyObject {
     func clearLights()
     /// Lets go of the device (used when switching to another controller).
     func stop()
+    /// Motorised faders follow each channel's volume, so they never need soft takeover.
+    var hasMotorisedFaders: Bool { get }
+}
+
+extension ControllerDriver {
+    var hasMotorisedFaders: Bool { false }
 }

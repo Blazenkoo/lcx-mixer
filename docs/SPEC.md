@@ -2,7 +2,7 @@
 
 This is the product specification LCX Mixer was built from, kept up to date with what is built. For build and install steps, see the [README](../README.md).
 
-**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2 (in progress) code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch.
+**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2 (in progress) code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual.
 
 ## Contents
 
@@ -13,6 +13,7 @@ This is the product specification LCX Mixer was built from, kept up to date with
 - [Control mapping](#control-mapping)
 - [Knobs](#knobs)
 - [Other controllers (MIDI learn)](#other-controllers-midi-learn)
+- [Mackie Control (experimental)](#mackie-control-experimental)
 - [Mixer window](#mixer-window)
 - [Menu-bar icon, panel and on-screen pop-up](#menu-bar-icon-panel-and-on-screen-pop-up)
 - [Per-source behaviour](#per-source-behaviour)
@@ -39,7 +40,7 @@ A small macOS menu-bar app, paired with a browser extension, turns the Launch Co
 **Non-goals for v1**
 
 - Safari and Firefox tabs (each browser appears as one whole app). Chromium browsers are supported tab by tab from v2.
-- Controllers other than the Launch Control XL mk2. From v2, any MIDI controller works through MIDI learn; Mackie Control is planned.
+- Controllers other than the Launch Control XL mk2. From v2, any MIDI controller works through MIDI learn, and Mackie Control surfaces experimentally.
 - Prebuilt or notarised downloads. It's shared as source code that people build themselves.
 
 ## Architecture
@@ -55,7 +56,7 @@ flowchart LR
 
     subgraph APP["LCX Mixer (macOS app)"]
         direction TB
-        DRIVER["Controller driver<br/>(Launch Control XL or MIDI learn)"]
+        DRIVER["Controller driver<br/>(Launch Control XL, Mackie Control or MIDI learn)"]
         NATIVEP["Native-app provider"]
         BROWSERP["Browser provider"]
         CORE["Mixer core<br/>single source of truth"]
@@ -78,7 +79,7 @@ The controller and native apps connect straight to the Mac app; browser tabs are
 
 **Mac app (Swift, SwiftUI)**
 
-1. **Controller driver.** Everything specific to one device. The Launch Control XL driver talks Core MIDI: it turns faders, knobs and buttons into device-independent actions, shows the mixer's requested lights in the colours the hardware has, and reconnects on its own when replugged. The MIDI-learn driver does the same for any other MIDI controller, using the assignments you teach it, without lights.
+1. **Controller driver.** Everything specific to one device. The Launch Control XL driver talks Core MIDI: it turns faders, knobs and buttons into device-independent actions, shows the mixer's requested lights in the colours the hardware has, and reconnects on its own when replugged. The MIDI-learn driver does the same for any other MIDI controller, using the assignments you teach it, without lights. The Mackie Control driver also moves motorised faders and fills scribble strips.
 2. **Native-app provider.** Finds which apps are producing sound, traces helper processes back to the app you'd recognise, and applies grouping. For each assigned native source it uses a macOS process tap (macOS 14.2+) to take over that app's audio and play it back at the channel's volume, mute state and master gain. It also measures each source's level for the meters.
 3. **Browser provider.** Accepts one bridge connection per browser profile, identifies which browser each comes from, turns the extension's messages into tab reports and carries commands back.
 4. **Mixer core.** The single source of truth: channels, the unassigned and mute lists, soft takeover, master mode, the saved layout. It neither parses browser messages nor speaks MIDI.
@@ -180,6 +181,24 @@ Any MIDI controller can drive the mixer. In Settings → Controller, choose **An
 - **Not covered:** light feedback (every device lights its buttons differently) and the speed and seek knobs.
 - Switching controllers releases the previous device at once; assignments are kept for when you switch back.
 
+## Mackie Control (experimental)
+
+Surfaces in Mackie Control (MCU) mode, such as the Behringer X-Touch family, work without setup. Choose **Mackie Control** in Settings → Controller; the device is found by name, or picked from the list.
+
+| Control | Action |
+| --- | --- |
+| Channel fader 1–8 | Volume. Motorised faders move to each channel's level, so soft takeover isn't needed |
+| Select | Play / pause |
+| Mute | Mute; hold 1 s to unassign |
+| F1 | Mute all media (LED on while muted) |
+| F2 | Microphone mute (LED on while muted) |
+| V-Pots, master fader, transport | Not used yet |
+
+- **Scribble strips:** the top row shows the source's name, the bottom row its volume or "Muted", in plain ASCII. On the X-Touch, each strip is coloured: green playing, yellow paused, red muted, white a native app.
+- **Lights:** Select is lit while playing, Mute while muted (blinking while all media is muted).
+- **Motor and hand:** a fader under a finger isn't driven, so the motor never fights the hand; on release it settles on the channel's real level.
+- **Status:** written from the protocol without a surface to test on, so it's marked experimental in Settings.
+
 ## Mixer window
 
 The window shows the 8 channels side by side as vertical strips, in the same left-to-right order as the controller's columns, so the screen maps 1:1 onto the hardware. The menu-bar panel uses stacked rows instead (next section).
@@ -205,6 +224,13 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 
 - Starting the app yourself, including after Quit, opens the mixer window. Starting at login keeps it in the menu bar.
 - The window always fits its content: exactly eight strips wide, and as tall as what's inside. It isn't resized by hand; changing the text size resizes it, keeping its top-left corner in place.
+
+**Welcome window and About**
+
+- On the first launch of v2, a welcome window shows the visual and the three setup steps (audio permission, browser extension, controller), each with its live state and a button to fix it.
+- **About**, in the menu-bar panel, shows the visual with the version, credits and links, and reopens the setup steps.
+- **The visual:** the app's icon and name above a tilted field of square tiles that rise and fall like level meters, green → yellow → red, fading into the bottom edge. Each tower has its own rhythm: a quick rise, a slow fall. Tiles show the icons of apps and websites on the Mac in grey, and generic glyphs elsewhere. Windows have 32 pt corners. With Reduce Motion on it's a still frame.
+- A small live copy sits at the bottom of Settings with the credits; clicking it opens About.
 
 **Header and footer**
 
@@ -266,7 +292,7 @@ The controller LEDs, the window and the menu-bar panel use the same four colours
 | Setting | Default |
 | --- | --- |
 | Use fader 1 as master volume | Off; greyed out when the output device sets its volume in hardware |
-| Controller | Novation Launch Control XL mk2; alternative: any MIDI controller (MIDI learn), with a device picker and assignment table |
+| Controller | Novation Launch Control XL mk2; alternatives: Mackie Control (experimental) and any MIDI controller (MIDI learn), with a device picker |
 | Volume curve | Natural (gentle at the low end); alternative: linear. A small graph shows how loud each fader position sounds |
 | Text size | Default; Smaller, Larger and Largest scale the mixer window, panel, pop-up and Settings. ⌘− / ⌘+ / ⌘0 in the mixer window and Settings |
 | Launch at login | On |
@@ -351,6 +377,9 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [x] The volume-curve graph follows the curve setting
 - [x] Switching controllers; MIDI learn assigns, moves and clears controls; Clear all confirms in its row; Launch Control XL lights come back after switching
 - [x] The mixer window opens on launch and after Quit, but not at login
+- [x] The welcome window, About and the Settings thumbnail show the visual
+- [ ] The visual shows a still frame with Reduce Motion on, and reads well in light mode
+- [ ] Mackie Control on a real surface (X-Touch): faders, motors, buttons, lights, scribble strips
 
 ## Security
 

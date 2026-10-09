@@ -28,7 +28,7 @@ https://github.com/user-attachments/assets/81d2e758-2983-4775-951c-c71e33042e1c
 - **Per-tab control:** Spotify, YouTube and Twitch in the same browser each get their own fader, in Chrome, Edge, Brave, Arc, Vivaldi or Chromium.
 - **Hands-free control:** volume on the faders, play/pause and mute on the buttons, all media muted on the side Mute button, and your microphone muted on Solo.
 - **Mute list:** apps and websites that should always stay silent, such as chat notifications, never take a channel.
-- **Other controllers:** the Launch Control XL mk2 works out of the box; any other MIDI controller can be set up by moving its faders and pressing its buttons (MIDI learn).
+- **Other controllers:** the Launch Control XL mk2 works out of the box; any other MIDI controller can be set up by moving its faders and pressing its buttons (MIDI learn). Mackie Control surfaces such as the Behringer X-Touch are supported experimentally, with motorised faders and scribble strips.
 - **Readable at any size:** four text sizes scale the mixer window, menu-bar panel, pop-up and Settings together.
 - **Clear feedback:** controller LEDs, a mixer window, a menu-bar panel and a short on-screen pop-up all show the same state.
 - **Fully local:** no account, no server, no network connections (see *Security*).
@@ -38,7 +38,7 @@ The full product specification, including assignment rules, LED colours and edge
 ## Requirements
 
 - macOS 14.2 or later (Apple silicon)
-- Novation Launch Control XL **mk2** (the app switches it to Factory Template 1 automatically), or any other MIDI controller through MIDI learn
+- Novation Launch Control XL **mk2** (the app switches it to Factory Template 1 automatically), any other MIDI controller through MIDI learn, or a Mackie Control surface (experimental)
 - Google Chrome or another Chromium browser (Edge, Brave, Arc, Vivaldi, Chromium), for per-tab control
 - Xcode (free from the App Store), to build
 
@@ -48,7 +48,7 @@ The full product specification, including assignment rules, LED colours and edge
 2. Double-click **Build LCX Mixer.command**, or run `./scripts/build.sh`.
    The script builds the app, signs it, installs it to Applications and launches it.
    If you have an "Apple Development" certificate (Xcode → Settings → Accounts → Manage Certificates), the app keeps its audio permission between rebuilds.
-3. On first use, macOS asks for **System audio recording**. It's needed to control the volume of native apps.
+3. On first launch, a welcome window walks through the three setup steps: the audio permission, the browser extension and the controller. macOS asks for **System audio recording**, which is needed to control the volume of native apps. About LCX Mixer, in the menu-bar panel, shows the steps again.
 
 ## Browser extension
 
@@ -77,6 +77,8 @@ In each browser you use, open its extensions page (`chrome://extensions`, `edge:
 **LED colours:** green = playing, amber = paused, dim green = a native app (no play/pause), red = muted, off = empty channel.
 
 **Another MIDI controller?** In Settings → Controller, choose **Any MIDI controller (MIDI learn)** and your device. Then click **Learn** next to each function (a channel's volume, play/pause or mute, Mute all media, Microphone mute) and move the fader or press the button you want for it. A control does one thing at a time: learning it for a new function takes it off the old one.
+
+**Mackie Control (experimental):** choose **Mackie Control** in Settings → Controller and put the surface in Mackie Control (MCU) mode. Faders set volume, and motorised ones move to each channel's level; **Select** plays and pauses, **Mute** mutes (hold to unassign), **F1** mutes all media and **F2** the microphone. The scribble strips show each channel's name and volume. It's written from the protocol and not yet tested on hardware: reports are welcome.
 
 ## On screen
 
@@ -109,6 +111,7 @@ LCX Mixer has **no network attack surface**: there is no server or web app, and 
 - **Spotify** applies its own loudness curve to its volume slider, so the bottom half of the fader is gentler than on other sources.
 - **Microphone mute:** some audio interfaces, such as the Focusrite Scarlett range, don't let apps mute their inputs. The pop-up says so when you press Solo.
 - **Side button lights** (Mute, Solo) on the Launch Control XL mk2 are yellow only.
+- **Mackie Control** support is experimental: it follows the protocol but hasn't been tested on a real surface yet. V-Pots and the master fader aren't used.
 - **MIDI learn** covers volume, play/pause, mute, Mute all media and Microphone mute. It has no light feedback, since every controller lights its buttons differently, and the speed and seek knobs are only on the Launch Control XL.
 - To check the audio permission and to identify which app a background audio process belongs to, the app uses two undocumented macOS functions. Future macOS versions could change them.
 

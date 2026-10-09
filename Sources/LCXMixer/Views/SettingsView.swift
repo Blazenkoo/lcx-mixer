@@ -52,6 +52,7 @@ private struct SettingLabel: View {
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var core: MixerCore
+    var openAbout: () -> Void = {}
     @State private var newGroupName = ""
     @State private var newGroupPrefixes = ""
     @Environment(\.uiScale) private var scale
@@ -120,6 +121,10 @@ struct SettingsView: View {
             ignoreSection
 
             browsersSection
+
+            Section {
+                SettingsCredits(core: core, openAbout: openAbout)
+            }
         }
         .formStyle(.grouped)
         .scaledFont(AppText.body)
@@ -129,6 +134,17 @@ struct SettingsView: View {
     // MARK: - Controller
 
     @State private var midiDevices: [String] = []
+
+    private var controllerDescription: String? {
+        switch settings.controllerKind {
+        case .launchControlXL:
+            return nil
+        case .mackieControl:
+            return "For surfaces in Mackie Control mode, such as the Behringer X-Touch. Faders set volume and motorised ones follow it; Select plays and pauses, Mute mutes (hold to unassign); F1 mutes all media, F2 the microphone. Experimental: not yet tested on hardware."
+        case .midiLearn:
+            return "Click Learn, then move the fader or press the button on your controller. Right-click an assignment to clear it. MIDI learn has no light feedback."
+        }
+    }
 
     private var controllerSection: some View {
         Section {
@@ -140,21 +156,20 @@ struct SettingsView: View {
                              : "\(core.controllerName) isn't connected.")
             }
 
-            if settings.controllerKind == .midiLearn {
+            if settings.controllerKind != .launchControlXL {
                 Picker(selection: $settings.midiDevice) {
-                    Text("Choose a device").tag("")
+                    Text(settings.controllerKind == .mackieControl ? "Find automatically" : "Choose a device").tag("")
                     ForEach(deviceChoices, id: \.self) { name in Text(name).tag(name) }
                 } label: {
                     SettingLabel(title: "MIDI device", description: nil)
                 }
                 .onAppear { midiDevices = MIDIController.sourceNames() }
-
+            }
+            if settings.controllerKind == .midiLearn {
                 MIDILearnTable(settings: settings, core: core)
             }
         } header: {
-            SectionHeader("Controller", description: settings.controllerKind == .midiLearn
-                          ? "Click Learn, then move the fader or press the button on your controller. Right-click an assignment to clear it. MIDI learn has no light feedback."
-                          : nil)
+            SectionHeader("Controller", description: controllerDescription)
         }
     }
 

@@ -42,13 +42,14 @@ struct GroupRule: Codable, Identifiable, Equatable {
 }
 
 enum ControllerKind: String, CaseIterable, Identifiable {
-    case launchControlXL, midiLearn
+    case launchControlXL, mackieControl, midiLearn
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .launchControlXL: return "Novation Launch Control XL mk2"
+        case .mackieControl: return "Mackie Control (experimental)"
         case .midiLearn: return "Any MIDI controller (MIDI learn)"
         }
     }

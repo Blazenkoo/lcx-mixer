@@ -350,6 +350,25 @@ final class MixerCore: ObservableObject {
         }
     }
 
+    /// From the welcome window: asks for the audio permission, or opens System Settings if it was refused.
+    func requestAudioPermission() {
+        switch AudioCapturePermission.status() {
+        case .authorized:
+            permissionStatus = .authorized
+        case .denied:
+            AudioCapturePermission.openSystemSettings()
+        case .unknown:
+            permissionRequested = true
+            AudioCapturePermission.request { [weak self] granted in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.permissionStatus = granted ? .authorized : (AudioCapturePermission.status() == .unknown ? .unknown : .denied)
+                    if granted { self.permissionGranted() }
+                }
+            }
+        }
+    }
+
     private func tapIfPossible(_ id: String) {
         guard var s = sources[id], s.kind == .app else { return }
         let status = AudioCapturePermission.status()
@@ -650,6 +669,7 @@ final class MixerCore: ObservableObject {
         switch settings.controllerKind {
         case .launchControlXL: return LaunchControlXLDriver()
         case .midiLearn: return MIDILearnDriver(settings: settings)
+        case .mackieControl: return MackieControlDriver(settings: settings)
         }
     }
 
@@ -857,6 +877,8 @@ final class MixerCore: ObservableObject {
 
     private func softTakeover(_ ch: Int, _ p: Float, target: Float) -> Bool {
         var f = faders[ch]
+        // A motorised fader was moved to the real level by the app, so it's always in charge.
+        if controller.hasMotorisedFaders { f.attached = true }
         if !f.attached {
             if p < target {
                 // Fader is below the current level: jumping down is always safe, take over at once.
@@ -963,7 +985,14 @@ final class MixerCore: ObservableObject {
         var lights = ControllerLights(channels: [])
         for ch in 0..<MixerCore.channelCount {
             var c = ChannelLights()
-            if !(masterActive && ch == 0), let s = source(onChannel: ch) {
+            if masterActive && ch == 0 {
+                c.fader = masterVolume
+                c.name = "Master"
+                c.detail = percent(masterVolume)
+            } else if let s = source(onChannel: ch) {
+                c.fader = position(of: s)
+                c.name = s.displayName
+                c.detail = s.isMuted || muteAll ? "Muted" : percent(position(of: s))
                 if s.canSpeed {
                     if s.speed > 1.001 { c.speedKnob = .green } else if s.speed < 0.999 { c.speedKnob = .red }
                 }

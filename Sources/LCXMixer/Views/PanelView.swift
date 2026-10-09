@@ -5,6 +5,7 @@ struct PanelView: View {
     @ObservedObject var core: MixerCore
     let openMixer: () -> Void
     let openSettings: () -> Void
+    var openAbout: () -> Void = {}
     @Environment(\.uiScale) private var scale
 
     var body: some View {
@@ -46,6 +47,7 @@ struct PanelView: View {
             HStack {
                 Button("Open mixer", action: openMixer)
                 Spacer()
+                Button("About", action: openAbout)
                 Button("Settings", action: openSettings)
                 Button("Quit") { NSApp.terminate(nil) }
             }

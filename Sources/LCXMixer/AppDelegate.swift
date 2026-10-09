@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let popover = NSPopover()
     private var mixerWindow: NSWindow?
     private var settingsWindow: NSWindow?
+    private var welcomeWindow: RoundedWindow?
+    private var aboutWindow: RoundedWindow?
     private var launchedAtLogin = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -34,7 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             PanelView(
                 core: core,
                 openMixer: { [weak self] in self?.showMixer() },
-                openSettings: { [weak self] in self?.showSettings() }
+                openSettings: { [weak self] in self?.showSettings() },
+                openAbout: { [weak self] in self?.showAbout() }
             )
         })
         panel.sizingOptions = [.preferredContentSize] // the popover follows the panel's size, including text size
@@ -55,6 +58,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if settings.launchAtLogin { settings.applyLaunchAtLogin() }
         // Opening the app yourself (including after Quit) shows the mixer; starting at login stays in the menu bar.
         if !launchedAtLogin { showMixer() }
+        // The welcome window, once: on the first launch of v2 (also for people coming from v1).
+        // Shown a moment later, once the Dock icon and the mixer window have settled.
+        if !UserDefaults.standard.bool(forKey: "welcomeShown.v2") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                MainActor.assumeIsolated {
+                    UserDefaults.standard.set(true, forKey: "welcomeShown.v2")
+                    self.showWelcome()
+                }
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -193,7 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.title = "LCX Mixer Settings"
             window.isReleasedWhenClosed = false
             let content = NSHostingController(rootView: ScaledRoot(settings: settings, shortcuts: true) {
-                SettingsView(settings: settings, core: core)
+                SettingsView(settings: settings, core: core, openAbout: { [weak self] in self?.showAbout() })
             })
             content.sizingOptions = [.preferredContentSize]
             window.contentViewController = content
@@ -202,6 +215,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         NSApp.activate()
         settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func showWelcome() {
+        popover.performClose(nil)
+        if welcomeWindow == nil {
+            welcomeWindow = RoundedWindow(content: ScaledRoot(settings: settings) {
+                WelcomeView(core: core,
+                            openSettings: { [weak self] in self?.showSettings() },
+                            close: { [weak self] in self?.welcomeWindow?.close() })
+            })
+        }
+        present(welcomeWindow)
+    }
+
+    func showAbout() {
+        popover.performClose(nil)
+        if aboutWindow == nil {
+            aboutWindow = RoundedWindow(content: ScaledRoot(settings: settings) {
+                AboutView(core: core,
+                          showSetup: { [weak self] in self?.aboutWindow?.close(); self?.showWelcome() },
+                          close: { [weak self] in self?.aboutWindow?.close() })
+            })
+        }
+        present(aboutWindow)
+    }
+
+    private func present(_ window: RoundedWindow?) {
+        guard let window else { return }
+        if !window.isVisible {
+            window.contentViewController?.view.layoutSubtreeIfNeeded()
+            if let size = window.contentViewController?.preferredContentSize, size.width > 0 {
+                window.setContentSize(size)
+            }
+            window.center()
+        }
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+        // The shadow follows the rounded corners once the content has drawn.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { window.invalidateShadow() }
     }
 }
 
