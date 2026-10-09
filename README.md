@@ -31,6 +31,7 @@ https://github.com/user-attachments/assets/81d2e758-2983-4775-951c-c71e33042e1c
 - **Other controllers:** the Launch Control XL mk2 works out of the box; any other MIDI controller can be set up by moving its faders and pressing its buttons (MIDI learn). Mackie Control surfaces such as the Behringer X-Touch are supported experimentally, with motorised faders and scribble strips.
 - **Readable at any size:** four text sizes scale the mixer window, menu-bar panel, pop-up and Settings together.
 - **Clear feedback:** controller LEDs, a mixer window, a menu-bar panel and a short on-screen pop-up all show the same state.
+- **Light on your Mac:** with its windows closed, it uses around 2% of one CPU core, even with several sources playing. Nothing is drawn while it can't be seen.
 - **Fully local:** no account, no server, no network connections (see *Security*).
 
 The full product specification, including assignment rules, LED colours and edge cases, is in [docs/SPEC.md](docs/SPEC.md).

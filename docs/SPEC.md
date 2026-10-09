@@ -2,7 +2,7 @@
 
 This is the product specification LCX Mixer was built from, kept up to date with what is built. For build and install steps, see the [README](../README.md).
 
-**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2 (in progress) code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual.
+**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2.0 code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual · v2.0.1 performance: nothing draws while it can't be seen, lighter background checks.
 
 ## Contents
 
@@ -21,6 +21,7 @@ This is the product specification LCX Mixer was built from, kept up to date with
 - [Settings and what is remembered](#settings-and-what-is-remembered)
 - [Edge cases and failure handling](#edge-cases-and-failure-handling)
 - [Permissions, install and build](#permissions-install-and-build)
+- [Performance](#performance)
 - [Security](#security)
 - [Licence and distribution](#licence-and-distribution)
 - [Later ideas](#later-ideas)
@@ -387,6 +388,25 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [x] Settings sections have clear space between them
 - [ ] Tab activity drops: ripple normally, glow in place with Reduce Motion
 - [ ] Mackie Control on a real surface (X-Touch): faders, motors, buttons, lights, scribble strips
+
+## Performance
+
+A menu-bar utility should cost next to nothing while it sits in the background.
+
+- **Nothing draws unseen.** The tower visual and the tab activity drops run only while their window can be seen: closed, minimised, fully covered or on another Space means no drawing. Closing About or the welcome window releases it entirely.
+- **Meters only when shown.** Level meters update only while the mixer window or the menu-bar panel is open.
+- **Cheap effects.** Tower glows are soft strokes rather than a per-frame blur; app icons are made grey once per app; the Settings thumbnail runs at 30 fps.
+- **Light background check.** Twice a second the app checks which apps play sound, remembering each process's details instead of asking macOS again.
+
+Measured on an Apple silicon MacBook with Spotify, YouTube and Twitch playing and League on a channel (CPU, 100% = one core):
+
+| State | CPU | Memory |
+| --- | --- | --- |
+| Menu bar only, windows closed | ~2% | ~44 MB |
+| Mixer window visible | ~13% | ~200 MB |
+| Mixer and About visible | ~30% | ~220 MB |
+
+Before v2.0.1, closed windows kept drawing: about 55% of a core and 258 MB with everything closed.
 
 ## Security
 
