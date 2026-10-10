@@ -47,12 +47,19 @@ final class RainTests: XCTestCase {
         XCTAssertEqual(RainField.waveTravel, 0.225, accuracy: 0.0001)
     }
 
-    /// Twice the 2.3 pace: waves spread in 0.8 s (was 1.6 s) and drops land twice as often.
-    func testDropsAreQuick() {
+    /// Quick and plentiful: waves spread in 0.8 s and about 5 drops land a second on a full bar,
+    /// so several overlap.
+    func testDropsAreQuickAndPlentiful() {
         XCTAssertEqual(RainField.life(calm: false), 0.8, accuracy: 0.0001)
-        XCTAssertEqual(RainField.life(calm: true), 1.2, accuracy: 0.0001)
         let perSecond = Double(landings(zone: 1, seconds: 300).count) / 300
-        XCTAssertEqual(perSecond, 2.6, accuracy: 0.3)
+        XCTAssertEqual(perSecond, 5.0, accuracy: 0.4)
+    }
+
+    /// With Reduce Motion: about one slow glow a second, each lasting 2.4 s.
+    func testReduceMotionGlowsAreSlowAndFew() {
+        XCTAssertEqual(RainField.life(calm: true), 2.4, accuracy: 0.0001)
+        let perSecond = Double(landings(zone: 1, seconds: 300, calm: true).count) / 300
+        XCTAssertEqual(perSecond, 1.2, accuracy: 0.15)
     }
 
     /// The pace is the same at every volume: a drop at 30% spreads as fast as one at 100%.

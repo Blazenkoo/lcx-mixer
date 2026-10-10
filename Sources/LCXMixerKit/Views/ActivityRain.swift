@@ -93,8 +93,8 @@ final class RainField {
     /// The waves spread up to this share of the bar each way.
     static let waveTravel = 0.225
     /// How long a drop lasts, in seconds: its waves reach `waveTravel` in this time. Short, since
-    /// sound changes many times a second.
-    static func life(calm: Bool) -> Double { calm ? 1.2 : 0.8 }
+    /// sound changes many times a second. With Reduce Motion, a glow fades in and out slowly.
+    static func life(calm: Bool) -> Double { calm ? 2.4 : 0.8 }
 
     /// `zone` (0…1): drops land only below it. Fewer land in a smaller zone, so the drops per
     /// length of bar stay the same: at 30% about a third as many as at 100%. Below 20% the rate
@@ -105,8 +105,9 @@ final class RainField {
         seeds.removeAll { t - $0.born > life }
         if active, zone > 0.005, t >= nextDrop {
             seeds.append(Seed(position: zone * Double.random(in: 0.08...0.92), born: t, strength: Double.random(in: 0.7...1)))
-            // About 2.6 drops a second across a full bar; calm drops land less often.
-            let interval = calm ? Double.random(in: 0.5...1.1) : Double.random(in: 0.175...0.55)
+            // About 5 drops a second across a full bar, so several overlap; calm drops land
+            // about once a second.
+            let interval = calm ? Double.random(in: 0.5...1.1) : Double.random(in: 0.0875...0.275)
             nextDrop = t + interval / max(zone, 0.2)
         }
         return seeds.map { seed in
