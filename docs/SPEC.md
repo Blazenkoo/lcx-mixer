@@ -2,7 +2,7 @@
 
 This is the product specification LCX Mixer was built from, kept up to date with what is built. For build and install steps, see the [README](../README.md).
 
-**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2.0 code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual · v2.0.1 performance: nothing draws while it can't be seen, lighter background checks · v2.1 event-driven: the app sleeps until something changes, and native apps at 100% play untouched · v2.1.1 crossfaded hand-over when a tap starts or ends · v2.2 foundation, nothing new to see or hear: the mixer core split into parts, one extension file per site, automated tests, unified logging and performance markers, CI and code scanning, a security policy, and a version on saved settings. Also: real level meters for native apps at 100% while the mixer is open, mute-listed sources on one quiet line instead of in Unassigned, and copy and paste in text fields.
+**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2.0 code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual · v2.0.1 performance: nothing draws while it can't be seen, lighter background checks · v2.1 event-driven: the app sleeps until something changes, and native apps at 100% play untouched · v2.1.1 crossfaded hand-over when a tap starts or ends · v2.2 foundation, nothing new to see or hear: the mixer core split into parts, one extension file per site, automated tests, unified logging and performance markers, CI and code scanning, a security policy, and a version on saved settings. Also: real level meters for native apps at 100% while the mixer is open, mute-listed sources on one quiet line instead of in Unassigned, and copy and paste in text fields · v2.3 Unassigned and Muted tabs with their counts, a muted source that tries to play is pointed out, activity drops stay below the volume and real meters follow the fader's scale, Settings with a sidebar and tables, a proper Settings button.
 
 ## Contents
 
@@ -124,7 +124,7 @@ A source is either one native app (or app group) or one browser tab. A new sourc
 
 ## Unassigned sources, the mute list and the ignore list
 
-Sources that are playing but not on a channel appear in an **Unassigned Audio Sources** list below the channels, in both the window and the menu-bar panel.
+Below the channels, in both the window and the menu-bar panel, two tabs show their counts: **Unassigned** holds sources that are playing but not on a channel, and **Muted** holds sources the mute list is silencing right now. Both use the same row: icon, name, status line, meter, main action and ⋯ menu. The list is as tall as the longer tab, up to 6 rows, and then scrolls, so switching tabs never resizes the window. The tabs are one segmented control: VoiceOver reads each with its count, and with keyboard navigation the arrow keys switch them.
 
 | How a source gets there | Gets a channel again… |
 | --- | --- |
@@ -135,7 +135,8 @@ Sources that are playing but not on a channel appear in an **Unassigned Audio So
 - **Drag a source onto a channel** to place it there. If that channel is occupied, the two swap: the previous occupant moves to Unassigned as "unassigned by you."
 - **Unassigning a channel** frees it at once. The audio carries on at its current volume.
 - **Manual unassigning lasts until the source closes.** If League is unassigned and then reopened later, it's a new source and takes a channel normally.
-- **Mute list (permanent, in Settings):** apps or websites that are always silenced and never take a channel, such as a chat app's notification sounds. While one is being silenced, a single grey line below Unassigned says so ("Muted by your list: WhatsApp"), with **Unmute** to take it off the list; the sound comes back at once and the source takes a channel like a new one. They're not listed among the unassigned sources, since they aren't waiting for a channel. Any source can be added from its "Always mute" menu, in Unassigned or on a channel strip. Native apps are silenced through a process tap (so the purple recording dot shows while they're silenced); tabs through the browser's tab mute.
+- **Mute list (permanent, in Settings):** apps or websites that are always silenced and never take a channel, such as a chat app's notification sounds. While one is open, it shows in the **Muted** tab with the entry that matches it ("Muted by your list · web.whatsapp.com"). **Unmute** takes it off the list: the sound comes back at once and the source takes a channel like a new one. Its ⋯ menu also offers **Always ignore instead** and **Edit mute list…**. Any source can be added from its "Always mute" menu, in Unassigned or on a channel strip. Native apps are silenced through a process tap (so the purple recording dot shows while they're silenced); tabs through the browser's tab mute.
+- **A muted source trying to play:** more than 3 seconds of sound from a muted source (not a short notification ping) means you're probably trying to hear it. Its row says "Trying to play · muted by your list" with an amber dot, the Muted tab's count turns amber, and the on-screen pop-up says "Muted by your list", at most every 10 minutes per source, with a VoiceOver announcement. It clears a few seconds after the sound stops.
 - **Ignore list (permanent, in Settings):** apps or websites the mixer leaves completely alone: they play as normal, never take a channel and never show in Unassigned, such as system sounds or FaceTime. Any source in Unassigned can be added via its "Always ignore" menu.
 - **One list per entry:** an app or website is on the mute list or the ignore list, never both. Adding or moving it to one list, or typing it in, takes it off the other. Moving a source from the mute list to the ignore list gives its sound back first.
 
@@ -219,7 +220,7 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 3. **Name and detail:** short name ("Spotify", "League", "Discord") plus one truncated line of detail (page title, or "Client + game").
 4. **Status:** glyph (play, pause or mute) plus a coloured dot, as in [Status colours](#status-colours).
 5. **Volume:** a vertical bar with the percentage. A ghost marker shows where the physical fader sits. When soft takeover is waiting, a short hint replaces the percentage: "Move fader down".
-6. **Level meter:** a real meter for native apps. Below 100% or muted, their sound passes through the app, which measures it. At 100% their sound plays untouched, and while a meter is on screen the app listens to it to measure the level, without changing it (since v2.2; before, they showed activity like browser tabs). For browser tabs, macOS can't separate each tab's sound, so while a tab is audible the bar shows activity instead, made to look unlike a level: neutral drops land at random spots and ripple outward both ways, fading as they spread. With Reduce Motion, each drop glows and fades in place.
+6. **Level meter:** a real meter for native apps. Below 100% or muted, their sound passes through the app, which measures it. At 100% their sound plays untouched, and while a meter is on screen the app listens to it to measure the level, without changing it (since v2.2; before, they showed activity like browser tabs). Real meters use the fader's scale (since v2.3), so a sound at full strength peaks exactly at the fader. For browser tabs, macOS can't separate each tab's sound, so while a tab is audible the bar shows activity instead, made to look unlike a level: neutral drops land at random spots below the channel's volume and ripple outward both ways, fading as they spread and stopping at the volume line, since nothing heard can be louder. Fewer land at a lower volume: the same number per length of bar. With Reduce Motion, each drop glows and fades in place.
 7. **Buttons:** play/pause (tabs only), mute, and unassign (×).
 
 **Interactions**
@@ -245,8 +246,8 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 **Header and footer**
 
 - **Header:** controller status ("Launch Control XL connected" or a red "Not connected" warning), "All media muted" and "Microphone muted" when on, and the current output device.
-- **Below the strips:** the Unassigned list, one row per source with icon, name, activity indicator, Assign (or Unmute for a muted-list source) and a menu with "Always mute" and "Always ignore".
-- **Settings** is opened from a gear icon in the window.
+- **Below the strips:** the Unassigned and Muted tabs (see above), with the same space above the strips as below them.
+- **Settings** opens from the Settings button in the header, a bordered button like the strips' own, or with ⌘,.
 
 ## Menu-bar icon, panel and on-screen pop-up
 
@@ -256,7 +257,7 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 
 - **Each channel row:** channel number · source name with media title ("YouTube – video title") · status dot · status glyph · volume percentage. Empty channels show "Free" in a quiet style.
 - **Row actions:** clicking a row's mute or play glyph toggles it; hovering a row reveals unassign (×).
-- **Below the rows:** the Unassigned list (name + Assign), then "Open mixer", "Settings" and "Quit".
+- **Below the rows:** the Unassigned and Muted tabs as compact rows (a small icon, the name and the main action), then "Open mixer", "Settings" and "Quit".
 - **Header line:** controller status, "Media muted" and "Mic muted" when on.
 
 **On-screen pop-up:** touching any control shows a small translucent pill for about 2 seconds, near the top of the screen where that source is playing. It shows the source's icon, the channel number, the source name with its media title, and the new volume or state ("Spotify – song · 45%"). It also appears for 3 seconds when a source gets a channel, waits for one, or is unassigned. It follows light and dark mode and can be turned off in Settings.
@@ -299,6 +300,10 @@ The controller LEDs, the window and the menu-bar panel use the same four colours
 - **On startup and reconnect,** all LEDs are refreshed from the current state.
 
 ## Settings and what is remembered
+
+Settings has a sidebar of sections in two groups, **Mixer** (General, Controller, Browsers) and **Sources** (App groups, Mute list, Ignore list), then About. Names only, with a status beside them where it helps: "Not connected" beside Controller, how many browsers are connected, and each list's count. The window can be resized (at least about 680 × 460 pt, more with larger text) and remembers its size, place and last section; its title follows the section.
+
+**The three lists are tables.** Click a header to sort, select one or more rows, and Delete or **Remove** removes them; ⌘Z brings them back. A click or Return edits an entry in place: Return saves and Esc goes back. **Add…** opens a sheet with Cancel and Add, which stays dimmed until the entry can be used, with a message for a duplicate or a typo; a pasted web address becomes its website. On the mute and ignore lists, **Move to Ignore list** or **Move to Mute list** moves the selection. Remove and Move are dimmed until a row is selected. A filter appears once a list has more than 8 entries.
 
 | Setting | Default |
 | --- | --- |
@@ -417,11 +422,23 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [ ] A native app at 100% shows a real meter while the mixer is open; turning it down and back up sounds as smooth as before; the purple dot goes 2 s after closing the mixer (with every app at 100%)
 - [ ] A mute-listed source shows on the grey line below Unassigned, not in the list, and Unmute works
 
+**v2.3 test checklist**
+
+- [x] All Swift and extension tests pass
+- [ ] Settings button and the space above the channels, in light and dark mode and at the largest text size
+- [ ] Unassigned and Muted tabs: counts, switching by click and by arrow keys, VoiceOver reads the counts
+- [ ] A muted source playing for more than 3 s: amber row and tag, one pop-up; a notification ping doesn't trigger it
+- [ ] Unmute, Always ignore instead and Edit mute list… from a Muted row
+- [ ] A tab at 30% shows fewer drops, only in the bottom 30%; a native app's meter peaks at its fader
+- [ ] Settings: every section, the sidebar statuses, resizing, the window remembering its size and section
+- [ ] Lists: Add sheet (Return, Esc, a pasted address), editing in place, Remove and Move dimmed until a selection, Delete, ⌘Z, the filter past 8 entries
+- [ ] VoiceOver through Settings and the tabs; largest text size
+
 ## Testing, logging and auditing
 
 **Automated tests** (since v2.2) run with `./scripts/test.sh` or a double-click on **Test LCX Mixer.command**, and on every push in CI.
 
-- **Swift tests** (`swift test`, about 100, in a few seconds): channel assignment and the layout after a restart, fader takeover, the knobs, the fader curve, the mute and ignore lists, tab merging, lights, MIDI parsing, the Launch Control XL and Mackie Control maps, MIDI learn and the settings version. They drive the mixer core with a stand-in controller and a throwaway settings store, so they never touch your real settings, audio or MIDI. Each part of the core also has tests of its own.
+- **Swift tests** (`swift test`, about 125, in a few seconds): channel assignment and the layout after a restart, fader takeover, the knobs, the fader curve, the mute and ignore lists, tab merging, lights, MIDI parsing, the Launch Control XL and Mackie Control maps, MIDI learn and the settings version. They drive the mixer core with a stand-in controller and a throwaway settings store, so they never touch your real settings, audio or MIDI. Each part of the core also has tests of its own.
 - **Extension tests** (`node --test Tests/extension/*.test.mjs`, needs Node.js): the page scripts run in a pretend page with fake versions of each site's controls, including a take-over by a newer extension build, the case that broke in 2.1.
 
 Anything that needs real audio, a controller or a browser stays a manual check: see the test checklists above.

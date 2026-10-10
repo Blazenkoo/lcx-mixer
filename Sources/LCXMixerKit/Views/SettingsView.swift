@@ -53,7 +53,9 @@ struct SettingsView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
             sidebar
-                .navigationSplitViewColumnWidth(min: 190 * scale, ideal: 200 * scale, max: 240 * scale)
+                // Wide enough for every name with its status beside it, at every text size.
+                .frame(minWidth: 210 * scale, idealWidth: 220 * scale)
+                .navigationSplitViewColumnWidth(min: 210 * scale, ideal: 220 * scale, max: 260 * scale)
                 .toolbar(removing: .sidebarToggle)
         } detail: {
             detail

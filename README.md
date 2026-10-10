@@ -80,13 +80,13 @@ In each browser you use, open its extensions page (`chrome://extensions`, `edge:
 
 ## On screen
 
-The **mixer window** (shown at the top) opens whenever you start the app yourself; at login, the app starts quietly in the menu bar. It lays the 8 channels out in the same order as the controller's columns. Sources that are playing without a channel wait in **Unassigned Audio Sources** below, where you can assign them or drag them onto a channel.
+The **mixer window** (shown at the top) opens whenever you start the app yourself; at login, the app starts quietly in the menu bar. It lays the 8 channels out in the same order as the controller's columns. Sources that are playing without a channel wait in the **Unassigned** tab below, where you can assign them or drag them onto a channel; the **Muted** tab beside it shows what your mute list is silencing.
 
 The **menu-bar panel** shows the same channels as compact rows, one click away:
 
 <img src="docs/images/menu-bar-panel.png" width="402" alt="The menu-bar panel listing the same four channels as rows, with status dots, volume percentages, and an Assign button for App Store">
 
-**Text size** (Settings → General, or ⌘− / ⌘+ / ⌘0 in the mixer window and Settings) scales everything together; the windows resize to fit.
+**Text size** (Settings → General, or ⌘− / ⌘+ / ⌘0 in the mixer window and Settings) scales everything together; the mixer window resizes to fit, and Settings, which you can resize yourself, never gets smaller than its content needs.
 
 Touching any control shows a short **pop-up** on the screen where that source is playing, so you can mix without opening anything:
 
@@ -108,7 +108,7 @@ Found a security problem? Please report it privately, as described in [SECURITY.
 ## Known limitations
 
 - **Changing a native app's volume** from 100% (or back to it) can sound slightly rough for a split second, as the app's sound crossfades over to LCX Mixer (or back). It happens only at that moment, not while you adjust the volume.
-- **Browser tab meters** show activity, not real levels: drops land on the bar and ripple outward. macOS can't separate the sound of individual tabs, so the tab meter is deliberately unlike a real one.
+- **Browser tab meters** show activity, not real levels: drops land on the bar below the channel's volume and ripple outward. macOS can't separate the sound of individual tabs, so the tab meter is deliberately unlike a real one.
 - **Twitch live streams:** "pause" silences the tab and keeps the stream live. A background tab can't reliably resume a paused live stream.
 - **Spotify** applies its own loudness curve to its volume slider, so the bottom half of the fader is gentler than on other sources.
 - **Microphone mute:** some audio interfaces, such as the Focusrite Scarlett range, don't let apps mute their inputs. The pop-up says so when you press Solo.
