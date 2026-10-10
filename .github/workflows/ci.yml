@@ -1,0 +1,36 @@
+# Builds the app and runs every test on each push to main and each pull request.
+# No secrets, no signing, no uploads: releases are built and published by hand.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Tool versions
+        run: |
+          swift --version
+          node --version
+
+      - name: Build the app (release)
+        run: swift build -c release
+
+      - name: Swift tests
+        run: swift test
+
+      - name: Extension tests
+        run: node --test Tests/extension/*.test.mjs

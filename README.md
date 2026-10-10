@@ -46,6 +46,8 @@ The full product specification, including assignment rules, LED colours and edge
    If you have an "Apple Development" certificate (Xcode → Settings → Accounts → Manage Certificates), the app keeps its audio permission between rebuilds.
 3. On first launch, a welcome window walks through the three setup steps: the audio permission, the browser extension and the controller. macOS asks for **System audio recording**, which is needed to control the volume of native apps. About LCX Mixer, in the menu-bar panel, shows the steps again.
 
+To run the tests, double-click **Test LCX Mixer.command** or run `./scripts/test.sh`. The extension's tests need [Node.js](https://nodejs.org); without it they're skipped locally and still run in CI on every push. How the code is laid out, how to read the logs and how to measure performance: [docs/SPEC.md](docs/SPEC.md#testing-logging-and-auditing).
+
 ## Browser extension
 
 The app keeps an up-to-date copy of the extension at:
@@ -97,8 +99,11 @@ LCX Mixer has **no network attack surface**: there is no server or web app, and 
 - Browsers talk to the app only through their native messaging, which they allow only for this extension's ID.
 - The app and its browser bridge connect through a local socket that only your user account can access. Each side checks that the other runs under your account and carries the app's own code signature.
 - Site icons come from the browser's local icon cache. The app makes no network requests.
+- Logs stay in macOS's own log on your Mac, with anything that could identify you hidden.
 - The only permission requested is System audio recording. No microphone access: muting the microphone only switches the input device's mute (or input volume) setting, and the app never listens to it.
 - **About the purple dot:** while a native app's volume is below 100% or it's muted, macOS shows a purple dot in the menu bar, its standard sign that an app is capturing system audio. That's LCX Mixer taking over the app's sound to set its volume. At 100%, the app plays untouched and the dot goes away. Click the dot or open Control Center to see the app's name. An orange dot would mean a microphone is in use, which LCX Mixer never does.
+
+Found a security problem? Please report it privately, as described in [SECURITY.md](SECURITY.md), which also lists everything the app exposes and how it's protected.
 
 ## Known limitations
 
@@ -110,7 +115,7 @@ LCX Mixer has **no network attack surface**: there is no server or web app, and 
 - **Side button lights** (Mute, Solo) on the Launch Control XL mk2 are yellow only.
 - **Mackie Control** support is experimental: it follows the protocol but hasn't been tested on a real surface yet. V-Pots and the master fader aren't used.
 - **MIDI learn** covers volume, play/pause, mute, Mute all media and Microphone mute. It has no light feedback, since every controller lights its buttons differently, and the speed and seek knobs are only on the Launch Control XL.
-- To check the audio permission and to identify which app a background audio process belongs to, the app uses two undocumented macOS functions. Future macOS versions could change them.
+- To check the audio permission and to identify which app a background audio process belongs to, the app uses three undocumented macOS functions (listed in [SECURITY.md](SECURITY.md)). Future macOS versions could change them.
 
 ## How it was made
 

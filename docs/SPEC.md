@@ -2,7 +2,7 @@
 
 This is the product specification LCX Mixer was built from, kept up to date with what is built. For build and install steps, see the [README](../README.md).
 
-**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2.0 code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual · v2.0.1 performance: nothing draws while it can't be seen, lighter background checks · v2.1 event-driven: the app sleeps until something changes, and native apps at 100% play untouched · v2.1.1 crossfaded hand-over when a tap starts or ends.
+**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2.0 code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual · v2.0.1 performance: nothing draws while it can't be seen, lighter background checks · v2.1 event-driven: the app sleeps until something changes, and native apps at 100% play untouched · v2.1.1 crossfaded hand-over when a tap starts or ends · v2.2 foundation, nothing new to see or hear: the mixer core split into parts, one extension file per site, automated tests, unified logging and performance markers, CI and code scanning, a security policy, and a version on saved settings.
 
 ## Contents
 
@@ -21,6 +21,7 @@ This is the product specification LCX Mixer was built from, kept up to date with
 - [Settings and what is remembered](#settings-and-what-is-remembered)
 - [Edge cases and failure handling](#edge-cases-and-failure-handling)
 - [Permissions, install and build](#permissions-install-and-build)
+- [Testing, logging and auditing](#testing-logging-and-auditing)
 - [Performance](#performance)
 - [Security](#security)
 - [Licence and distribution](#licence-and-distribution)
@@ -83,14 +84,21 @@ The controller and native apps connect straight to the Mac app; browser tabs are
 1. **Controller driver.** Everything specific to one device. The Launch Control XL driver talks Core MIDI: it turns faders, knobs and buttons into device-independent actions, shows the mixer's requested lights in the colours the hardware has, and reconnects on its own when replugged. The MIDI-learn driver does the same for any other MIDI controller, using the assignments you teach it, without lights. The Mackie Control driver also moves motorised faders and fills scribble strips.
 2. **Native-app provider.** Finds which apps are producing sound, traces helper processes back to the app you'd recognise, and applies grouping. For each assigned native source it uses a macOS process tap (macOS 14.2+) to take over that app's audio and play it back at the channel's volume, mute state and master gain. It also measures each source's level for the meters.
 3. **Browser provider.** Accepts one bridge connection per browser profile, identifies which browser each comes from, turns the extension's messages into tab reports and carries commands back.
-4. **Mixer core.** The single source of truth: channels, the unassigned and mute lists, soft takeover, master mode, the saved layout. It neither parses browser messages nor speaks MIDI.
+4. **Mixer core.** The single source of truth: channels, the unassigned and mute lists, soft takeover, master mode, the saved layout. It neither parses browser messages nor speaks MIDI. Since v2.2, `MixerCore` coordinates five parts that work on plain values and never call each other, so each can be tested on its own:
+    - **ChannelAssignment**: who sits on which channel, who waits, who was unassigned by hand or silenced by the mute list, and the channels held after a restart.
+    - **ControlInput**: what a fader, knob or button move means: soft takeover, the speed knob's steps, the seek knob's arming and jump sizes, Twitch's double press. `ButtonHold` tells a short press from a hold.
+    - **MuteLists**: which list entries match a source, and which sources a changed list silences or releases.
+    - **LightComposer**: what every controller light shows.
+    - **TabMerger**: how a browser's tab reports become sources.
+
+    `MixerCore` carries out what they decide: volumes, pop-ups, lights, saving the layout, timers.
 5. **UI.** The mixer window, the menu-bar icon and panel, the on-screen pop-up and Settings.
 6. **Bridge mode.** The same app executable, which a browser launches in a small bridge mode through native messaging. It relays messages between the extension and the main app over a local socket.
 
 **Browser extension (Manifest V3, any Chromium browser)**
 
 1. **Background worker.** Reports every audible tab to the Mac app (title, site, icon from the browser's local cache, play state, speed, window position), applies tab mute, routes the app's commands to the right tab, and updates itself whenever the app is rebuilt.
-2. **Site adapters.** Small scripts in each media tab that set volume, play/pause, speed and seek position through the site's own player.
+2. **Page scripts.** Small scripts in each media tab that set volume, play/pause, speed and seek position. `main-world.js` works with any page's media elements; what's special about a site lives in its own file under `sites/` (YouTube, Spotify, Twitch), which `main-world.js` asks first. Adding or fixing a site touches one file.
 
 **One rule ties them together:** a browser controlled through the extension is never also a native source. Chrome always works tab by tab; another Chromium browser does from the moment its extension first connects. Until then it appears as one whole app, like Safari. So a browser and its tabs never fight over the same sound.
 
@@ -314,6 +322,8 @@ The controller LEDs, the window and the menu-bar panel use the same four colours
 
 **Not remembered across restarts, by design:** manual unassigns. A source you unassigned is treated as new after a restart.
 
+**Settings version:** from v2.2 the saved settings carry a version number (1). Settings from 2.1.1 and earlier have none; they're kept exactly as they are and get the number. A release that changes how something is saved raises the number and adds a step that upgrades older settings, instead of guessing. Settings saved by a newer build are left alone.
+
 ## Edge cases and failure handling
 
 Nothing fails silently: every problem shows in the window header, the menu-bar panel and, where relevant, on the affected channel.
@@ -389,6 +399,41 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [ ] Tab activity drops: ripple normally, glow in place with Reduce Motion
 - [ ] Mackie Control on a real surface (X-Touch): faders, motors, buttons, lights, scribble strips
 
+**v2.2 test checklist** (nothing should look, sound or behave differently from 2.1.1)
+
+- [x] All Swift and extension tests pass, for every commit of the split
+- [x] The app builds, installs and comes up with the channels where they were
+- [ ] Spotify, YouTube, Twitch and a native app: every fader, with soft takeover
+- [ ] Channel mute, mute-all and the microphone button
+- [ ] Holding mute for 1 s unassigns; holding play for 3 s reloads a tab
+- [ ] Play/pause on each tab; a double press on Twitch jumps to live
+- [ ] Speed and seek knobs on YouTube
+- [ ] Adding a site to the mute list and taking it off again
+- [ ] Quitting and reopening puts the channels back
+- [ ] The logs show up in `log stream`, and the markers in Instruments
+- [ ] Benchmark matches 2.1.1
+
+## Testing, logging and auditing
+
+**Automated tests** (since v2.2) run with `./scripts/test.sh` or a double-click on **Test LCX Mixer.command**, and on every push in CI.
+
+- **Swift tests** (`swift test`, about 100, in a few seconds): channel assignment and the layout after a restart, fader takeover, the knobs, the fader curve, the mute and ignore lists, tab merging, lights, MIDI parsing, the Launch Control XL and Mackie Control maps, MIDI learn and the settings version. They drive the mixer core with a stand-in controller and a throwaway settings store, so they never touch your real settings, audio or MIDI. Each part of the core also has tests of its own.
+- **Extension tests** (`node --test Tests/extension/*.test.mjs`, needs Node.js): the page scripts run in a pretend page with fake versions of each site's controls, including a take-over by a newer extension build, the case that broke in 2.1.
+
+Anything that needs real audio, a controller or a browser stays a manual check: see the test checklists above.
+
+**Logs.** The app logs to macOS's unified log, subsystem `org.lcxmixer.app`, in four categories: audio, midi, browser and ui. Failures are errors; connections and device changes are info, which macOS keeps in memory only. The app writes no log files of its own. To follow it live in Terminal:
+
+```
+log stream --level info --predicate 'subsystem == "org.lcxmixer.app"'
+```
+
+For the last hour: `log show --last 1h --info --predicate 'subsystem == "org.lcxmixer.app"'`. Anything that could identify you, such as a file path with your user name, shows as `<private>`.
+
+**Performance markers.** The four busiest code paths are marked as named intervals: Native check, Tab merge, LED refresh, and Tap start and Tap stop. In Instruments they appear under Points of Interest with their durations, so a slowdown points straight at one part. They cost next to nothing while nobody records.
+
+**Code checks.** CI builds and tests every push and pull request; CodeQL scans the Swift and JavaScript code. Reporting a security problem, and what the app exposes: [SECURITY.md](../SECURITY.md).
+
 ## Performance
 
 A menu-bar utility should cost next to nothing while it sits in the background.
@@ -410,6 +455,8 @@ Measured on an Apple silicon MacBook with Spotify, YouTube and Twitch playing an
 | Mixer window visible | ~56% · 266 MB | ~13% · 200 MB | ~13% · 194 MB |
 | Mixer and About visible | ~56% | ~30% · 220 MB | ~30% |
 
+**Measuring it yourself:** `./scripts/benchmark.sh <state> [seconds]` samples the running app with `top` every 2 s (for 5 minutes unless told otherwise) and prints a row with its average and highest CPU and its memory. Set things up first (sources playing, the window you want open), then leave the Mac alone while it runs.
+
 ## Security
 
 LCX Mixer has no network attack surface: no server, no web app, nothing listening on the network. Everything stays on the Mac. This was a deliberate design constraint: a live web component would add an attack vector for no benefit to the user.
@@ -417,9 +464,12 @@ LCX Mixer has no network attack surface: no server, no web app, nothing listenin
 - **Browser ↔ app:** the browser's native messaging, which it allows only for the one extension ID listed in the app's host manifest.
 - **Bridge ↔ app:** a local socket file in a folder only your user account can open (`0700`). The socket file itself is user-only (`0600`).
 - **Both ends verify each other:** a connection is accepted only if the other process runs under the same user account and is signed with the app's own code signature. A fake listener or another program can't send or receive mixer commands.
-- **MIDI:** the app only reads from the controller you choose and sends light messages only to the Launch Control XL. MIDI learn assignments are stored locally.
+- **MIDI:** the app only reads from the controller you choose and sends light messages only to it (none with MIDI learn). MIDI learn assignments are stored locally.
 - **Permissions:** only System audio recording, used to control the volume of apps on a channel. No microphone or accessibility permissions: microphone mute only changes the input device's mute or volume setting. The app makes no network requests at all; site icons come from the browser's local icon cache.
 - **Purple menu-bar dot:** while a native app's volume is below 100% or it's muted, macOS shows its purple system-audio-recording indicator, naming LCX Mixer in Control Center. It is expected and explained in the README; browser tabs never trigger it.
+- **Logs** stay in macOS's unified log on the Mac, with anything that could identify you marked private.
+
+How to report a security problem, the full list of what the app exposes, and the three undocumented macOS functions it uses: [SECURITY.md](../SECURITY.md).
 
 ## Licence and distribution
 

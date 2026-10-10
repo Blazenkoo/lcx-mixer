@@ -97,6 +97,12 @@ final class AppSettings: ObservableObject {
     @Published var extensionBrowsers: [String] { didSet { save(extensionBrowsers, "extensionBrowsers") } }
     private(set) var rememberedVolumes: [String: Float]
 
+    /// How the saved settings are laid out. Raise it when a release changes how something is
+    /// saved, and add the step that brings older settings up to date in `upgrade(from:)`.
+    /// 0: 2.1.1 and earlier, which saved no version. 1: 2.2, the same layout with a version.
+    static let settingsVersion = 1
+    static let settingsVersionKey = "settingsVersion"
+
     static let defaultGroups = [GroupRule(name: "League", prefixes: ["com.riotgames."])]
     static let defaultIgnore = [
         "com.apple.systemsoundserverd",
@@ -137,6 +143,18 @@ final class AppSettings: ObservableObject {
             ignoreList.removeAll { muted.contains($0) }
             save(ignoreList, "ignoreList")
         }
+
+        let saved = defaults.integer(forKey: Self.settingsVersionKey)
+        if saved < Self.settingsVersion {
+            upgrade(from: saved)
+            defaults.set(Self.settingsVersion, forKey: Self.settingsVersionKey)
+        }
+        // A higher version was saved by a newer build: leave its settings as they are.
+    }
+
+    /// Brings settings saved by an older release up to date, one version at a time.
+    private func upgrade(from version: Int) {
+        // 0 → 1: nothing to change. 2.2 saves everything the way 2.1.1 did.
     }
 
     /// One step larger (+1) or smaller (−1), stopping at the ends.
