@@ -112,10 +112,14 @@ struct SettingsView: View {
         .listStyle(.sidebar)
     }
 
+    /// A thin horizontal line. (In the stack, since a header on its own lays a divider out
+    /// vertically.)
     private var sidebarSeparator: some View {
-        Divider()
-            .padding(.top, 4 * scale)
-            .accessibilityHidden(true)
+        VStack(spacing: 0) {
+            Divider()
+        }
+        .padding(.top, 4 * scale)
+        .accessibilityHidden(true)
     }
 
     /// A section's name, with its status on the right where one is worth seeing at a glance.
