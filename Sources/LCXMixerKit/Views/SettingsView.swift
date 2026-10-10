@@ -43,6 +43,9 @@ final class SettingsNavigation: ObservableObject {
 
 /// Settings: a sidebar of sections on the left, the chosen section on the right.
 struct SettingsView: View {
+    /// The window can't be made smaller than this, times the text size.
+    static let minimumSize = CGSize(width: 680, height: 460)
+
     @ObservedObject var settings: AppSettings
     @ObservedObject var core: MixerCore
     var openAbout: () -> Void = {}
@@ -62,6 +65,7 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .id(nav.section)
         }
+        .frame(minWidth: Self.minimumSize.width * scale, minHeight: Self.minimumSize.height * scale)
         .scaledFont(AppText.body)
     }
 
@@ -79,19 +83,39 @@ struct SettingsView: View {
         )
     }
 
+    /// Three groups that always stay open, with a thin line between them: Mixer, Sources, and
+    /// About on its own.
     private var sidebar: some View {
         List(selection: selection) {
-            Section("Mixer") {
+            Section {
                 ForEach(SettingsSection.mixer) { sidebarRow($0) }
+            } header: {
+                Text("Mixer")
             }
-            Section("Sources") {
+            .collapsible(false)
+            Section {
                 ForEach(SettingsSection.sources) { sidebarRow($0) }
+            } header: {
+                VStack(alignment: .leading, spacing: 10 * scale) {
+                    sidebarSeparator
+                    Text("Sources")
+                }
             }
+            .collapsible(false)
             Section {
                 sidebarRow(.about)
+            } header: {
+                sidebarSeparator
             }
+            .collapsible(false)
         }
         .listStyle(.sidebar)
+    }
+
+    private var sidebarSeparator: some View {
+        Divider()
+            .padding(.top, 4 * scale)
+            .accessibilityHidden(true)
     }
 
     /// A section's name, with its status on the right where one is worth seeing at a glance.

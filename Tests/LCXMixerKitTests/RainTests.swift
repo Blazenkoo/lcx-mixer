@@ -47,6 +47,35 @@ final class RainTests: XCTestCase {
         XCTAssertEqual(RainField.waveTravel, 0.225, accuracy: 0.0001)
     }
 
+    /// Twice the 2.3 pace: waves spread in 0.8 s (was 1.6 s) and drops land twice as often.
+    func testDropsAreQuick() {
+        XCTAssertEqual(RainField.life(calm: false), 0.8, accuracy: 0.0001)
+        XCTAssertEqual(RainField.life(calm: true), 1.2, accuracy: 0.0001)
+        let perSecond = Double(landings(zone: 1, seconds: 300).count) / 300
+        XCTAssertEqual(perSecond, 2.6, accuracy: 0.3)
+    }
+
+    /// The pace is the same at every volume: a drop at 30% spreads as fast as one at 100%.
+    func testWavesSpreadAsFastAtLowVolume() {
+        for zone in [1.0, 0.3] {
+            let field = RainField()
+            let start = Date(timeIntervalSinceReferenceDate: 10_000)
+            let first = field.drops(at: start, active: true, calm: false, zone: zone)
+            XCTAssertEqual(first.count, 1)
+            let landed = first[0].bands[0].position
+            // Half its life later, its waves are halfway out.
+            let later = field.drops(at: start.addingTimeInterval(0.4), active: false, calm: false, zone: zone)
+            let drop = later.first { $0.bands[0].position == landed }
+            XCTAssertNotNil(drop)
+            if let drop {
+                XCTAssertEqual(drop.bands[1].position - landed, RainField.waveTravel / 2, accuracy: 0.0001)
+            }
+            // And gone once its life is over.
+            let gone = field.drops(at: start.addingTimeInterval(0.81), active: false, calm: false, zone: zone)
+            XCTAssertFalse(gone.contains { $0.bands[0].position == landed })
+        }
+    }
+
     func testMetersUseTheFadersScale() {
         let store = TestStore.fresh(for: self)
         let settings = AppSettings(defaults: store)

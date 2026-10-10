@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Which list shows below the channels.
@@ -280,16 +281,18 @@ struct SourceTabsControl: View {
 
     private func segment(_ value: SourceTab, _ title: String, count: Int, alert: Bool) -> some View {
         let selected = tab == value
+        // An empty list's tag looks switched off, so a glance tells which tab has anything in it.
+        let empty = count == 0
         return HStack(spacing: 6 * scale) {
             Text(title)
                 .scaledFont(compact ? AppText.callout : AppText.body, weight: selected ? .semibold : .regular)
                 .foregroundStyle(selected ? Color.primary : Color.secondary)
             Text("\(count)")
-                .scaledFont(AppText.status, weight: .semibold, monospacedDigit: true)
-                .foregroundStyle(alert ? Color.warningText : Color.primary)
+                .scaledFont(AppText.status, weight: empty ? .regular : .semibold, monospacedDigit: true)
+                .foregroundStyle(alert ? Color.warningText : empty ? Color(nsColor: .disabledControlTextColor) : Color.primary)
                 .padding(.horizontal, 6 * scale)
                 .frame(minWidth: 20 * scale, minHeight: 16 * scale)
-                .background(Capsule().fill(tagFill(selected: selected, alert: alert)))
+                .background(Capsule().fill(tagFill(selected: selected, alert: alert, empty: empty)))
         }
         .padding(.horizontal, 10 * scale)
         .padding(.vertical, 3 * scale)
@@ -304,8 +307,9 @@ struct SourceTabsControl: View {
         .onTapGesture { tab = value }
     }
 
-    private func tagFill(selected: Bool, alert: Bool) -> Color {
+    private func tagFill(selected: Bool, alert: Bool, empty: Bool) -> Color {
         if alert { return Color.warningText.opacity(0.2) }
+        if empty { return Color.primary.opacity(0.05) }
         return selected ? Color.accentColor.opacity(0.25) : Color.primary.opacity(0.1)
     }
 }

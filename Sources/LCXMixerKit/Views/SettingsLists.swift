@@ -3,8 +3,8 @@ import SwiftUI
 
 // MARK: - Layout shared by the list sections
 
-/// A list section: its title and description, a filter once the list is long, the table (the only
-/// part that scrolls), and the labelled buttons under it.
+/// A list section: its title and description, a filter once the list is long, the list (only as
+/// tall as its rows, and the only part that scrolls), and the labelled buttons right under it.
 private struct ListPageLayout<TableContent: View, Buttons: View>: View {
     let title: String
     let description: String
@@ -33,7 +33,6 @@ private struct ListPageLayout<TableContent: View, Buttons: View>: View {
                 .frame(maxWidth: 280 * scale)
             }
             table
-                .frame(minHeight: 160 * scale, maxHeight: .infinity)
             HStack(spacing: 8 * scale) {
                 buttons
                 Spacer()
@@ -41,6 +40,7 @@ private struct ListPageLayout<TableContent: View, Buttons: View>: View {
             .labelStyle(.titleAndIcon)
         }
         .padding(20 * scale)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -56,12 +56,6 @@ struct EntryListPage: View {
     @State private var selection = Set<String>()
     @State private var filter = ""
     @State private var adding = false
-    @State private var sortOrder: [KeyPathComparator<Entry>] = []
-
-    struct Entry: Identifiable, Hashable {
-        let value: String
-        var id: String { value }
-    }
 
     private var listKey: ReferenceWritableKeyPath<AppSettings, [String]> { kind == .mute ? \.muteList : \.ignoreList }
     private var otherKey: ReferenceWritableKeyPath<AppSettings, [String]> { kind == .mute ? \.ignoreList : \.muteList }
@@ -77,37 +71,32 @@ struct EntryListPage: View {
             : "Apps and websites left completely alone: they play as normal and never appear in the mixer."
     }
 
-    private var rows: [Entry] {
-        var list = items.map(Entry.init)
+    private var rows: [ListRow] {
         let f = filter.trimmingCharacters(in: .whitespaces)
-        if !f.isEmpty { list = list.filter { $0.value.localizedCaseInsensitiveContains(f) } }
-        if !sortOrder.isEmpty { list.sort(using: sortOrder) }
-        return list
+        return items
+            .filter { f.isEmpty || $0.localizedCaseInsensitiveContains(f) }
+            .map { ListRow(id: $0, values: [$0], accessibilityName: $0) }
+    }
+
+    private var emptyText: String {
+        if !items.isEmpty { return "Nothing on the \(listName) matches “\(filter.trimmingCharacters(in: .whitespaces))”." }
+        return kind == .mute
+            ? "Nothing on the mute list. Add an app or website, or choose Always mute from a source's ⋯ menu in the mixer."
+            : "Nothing on the ignore list. Add an app or website, or choose Always ignore from a source's ⋯ menu in the mixer."
     }
 
     var body: some View {
         ListPageLayout(title: title, description: description, entryCount: items.count, filter: $filter) {
-            Table(rows, selection: $selection, sortOrder: $sortOrder) {
-                TableColumn("Bundle ID or website", value: \.value) { entry in
-                    EntryCell(value: entry.value, prompt: prompt) { rename(entry.value, to: $0) }
-                }
-            }
-            .onDeleteCommand { remove(selection) }
-            .contextMenu(forSelectionType: String.self) { ids in
-                Button("Remove") { remove(ids) }
-                Button(moveTitle) { move(ids) }
-            }
-            .overlay {
-                if items.isEmpty {
-                    Text(kind == .mute
-                         ? "Nothing on the mute list. Add an app or website, or choose Always mute from a source's ⋯ menu in the mixer."
-                         : "Nothing on the ignore list. Add an app or website, or choose Always ignore from a source's ⋯ menu in the mixer.")
-                        .scaledFont(AppText.callout)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(24)
-                }
-            }
+            EditableList(
+                label: title,
+                columns: [ListColumn(id: 0, title: "Bundle ID or website", prompt: prompt, monospaced: true)],
+                rows: rows,
+                emptyText: emptyText,
+                selection: $selection,
+                commit: { id, _, value in rename(id, to: value) },
+                remove: remove,
+                actions: [ListAction(title: moveTitle, perform: move)]
+            )
         } buttons: {
             Button { adding = true } label: { Label("Add…", systemImage: "plus") }
                 .help("Add an app or website to the \(listName)")
@@ -184,55 +173,29 @@ struct EntryListPage: View {
     }
 }
 
-/// One entry, edited in place: Return saves, Esc goes back.
-private struct EntryCell: View {
-    let value: String
-    let prompt: String
-    let commit: (String) -> Bool
-    @State private var draft = ""
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        TextField("Entry", text: $draft, prompt: Text(prompt))
-            .labelsHidden()
-            .textFieldStyle(.plain)
-            .scaledFont(AppText.body, design: .monospaced)
-            .focused($focused)
-            .onAppear { draft = value }
-            .onChange(of: value) { _, new in draft = new }
-            .onSubmit(finish)
-            .onChange(of: focused) { _, isFocused in if !isFocused { finish() } }
-            .onExitCommand {
-                draft = value
-                focused = false
-            }
-            .accessibilityLabel(value)
-    }
-
-    private func finish() {
-        if draft != value && !commit(draft) { draft = value }
-    }
-}
-
 // MARK: - App groups
 
 struct GroupsPage: View {
     @ObservedObject var settings: AppSettings
     @Environment(\.undoManager) private var undoManager
-    @Environment(\.uiScale) private var scale
-    @State private var selection = Set<UUID>()
+    @State private var selection = Set<String>()
     @State private var filter = ""
     @State private var adding = false
-    @State private var sortOrder: [KeyPathComparator<GroupRule>] = []
 
-    private var rows: [GroupRule] {
-        var list = settings.groups
+    private var rows: [ListRow] {
         let f = filter.trimmingCharacters(in: .whitespaces)
-        if !f.isEmpty {
-            list = list.filter { $0.name.localizedCaseInsensitiveContains(f) || $0.prefixesText.localizedCaseInsensitiveContains(f) }
-        }
-        if !sortOrder.isEmpty { list.sort(using: sortOrder) }
-        return list
+        return settings.groups
+            .filter { f.isEmpty || $0.name.localizedCaseInsensitiveContains(f) || $0.prefixesText.localizedCaseInsensitiveContains(f) }
+            .map { group in
+                let name = group.name.trimmingCharacters(in: .whitespaces)
+                return ListRow(
+                    id: group.id.uuidString,
+                    values: [group.name, group.prefixesText],
+                    accessibilityName: "\(name.isEmpty ? "Unnamed group" : name), \(group.prefixes.isEmpty ? "no prefixes" : group.prefixes.joined(separator: ", "))",
+                    warning: group.isComplete ? nil
+                        : name.isEmpty ? "This group needs a name." : "This group needs at least one prefix."
+                )
+            }
     }
 
     var body: some View {
@@ -242,45 +205,20 @@ struct GroupsPage: View {
             entryCount: settings.groups.count,
             filter: $filter
         ) {
-            Table(rows, selection: $selection, sortOrder: $sortOrder) {
-                TableColumn("Name", value: \.name) { group in
-                    TextField("Name", text: field(group.id, \.name), prompt: Text("e.g. League"))
-                        .labelsHidden()
-                        .textFieldStyle(.plain)
-                        .accessibilityLabel("Group name")
-                }
-                .width(min: 120 * scale, ideal: 160 * scale)
-                TableColumn("Bundle ID prefixes", value: \.prefixesText) { group in
-                    HStack(spacing: 6 * scale) {
-                        TextField("Bundle ID prefixes", text: field(group.id, \.prefixesText), prompt: Text("e.g. com.riotgames."))
-                            .labelsHidden()
-                            .textFieldStyle(.plain)
-                            .scaledFont(AppText.body, design: .monospaced)
-                            .accessibilityLabel("Bundle ID prefixes for \(group.name.isEmpty ? "unnamed group" : group.name)")
-                        if !group.isComplete {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(Color.warningText)
-                                .help(group.name.trimmingCharacters(in: .whitespaces).isEmpty
-                                      ? "This group needs a name." : "This group needs at least one prefix.")
-                                .accessibilityLabel(group.name.trimmingCharacters(in: .whitespaces).isEmpty
-                                                    ? "Needs a name" : "Needs a prefix")
-                        }
-                    }
-                }
-            }
-            .onDeleteCommand { remove(selection) }
-            .contextMenu(forSelectionType: UUID.self) { ids in
-                Button("Remove") { remove(ids) }
-            }
-            .overlay {
-                if settings.groups.isEmpty {
-                    Text("No app groups. Add one to put an app's helper processes, such as a game and its launcher, on one channel.")
-                        .scaledFont(AppText.callout)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(24)
-                }
-            }
+            EditableList(
+                label: "App groups",
+                columns: [
+                    ListColumn(id: 0, title: "Name", prompt: "e.g. League", placeholder: "No name", width: 170),
+                    ListColumn(id: 1, title: "Bundle ID prefixes", prompt: "e.g. com.riotgames.", placeholder: "No prefixes", monospaced: true),
+                ],
+                rows: rows,
+                emptyText: settings.groups.isEmpty
+                    ? "No app groups. Add one to put an app's helper processes, such as a game and its launcher, on one channel."
+                    : "No app group matches “\(filter.trimmingCharacters(in: .whitespaces))”.",
+                selection: $selection,
+                commit: edit,
+                remove: remove
+            )
         } buttons: {
             Button { adding = true } label: { Label("Add…", systemImage: "plus") }
                 .help("Add an app group")
@@ -291,19 +229,31 @@ struct GroupsPage: View {
         .sheet(isPresented: $adding) {
             AddGroupSheet(existing: settings.groups) { group in
                 change("Add") { settings.groups.append(group) }
-                selection = [group.id]
+                selection = [group.id.uuidString]
             }
         }
     }
 
-    /// A field of one group, edited in place.
-    private func field(_ id: UUID, _ key: WritableKeyPath<GroupRule, String>) -> Binding<String> {
-        Binding(
-            get: { settings.groups.first { $0.id == id }?[keyPath: key] ?? "" },
-            set: { value in
-                if let i = settings.groups.firstIndex(where: { $0.id == id }) { settings.groups[i][keyPath: key] = value }
+    /// An edit in place: column 0 is the name, 1 the prefixes. Returns false (and the old value
+    /// stays) if the new one can't be used.
+    private func edit(_ id: String, _ column: Int, _ value: String) -> Bool {
+        guard let index = settings.groups.firstIndex(where: { $0.id.uuidString == id }) else { return false }
+        let others = settings.groups.filter { $0.id.uuidString != id }
+        let problem = column == 0
+            ? EntryInput.groupProblem(name: value, prefixes: "", existing: others)
+            : EntryInput.groupProblem(name: "", prefixes: value, existing: [])
+        if problem != nil {
+            NSSound.beep()
+            return false
+        }
+        change("Edit") {
+            if column == 0 {
+                settings.groups[index].name = value.trimmingCharacters(in: .whitespaces)
+            } else {
+                settings.groups[index].prefixesText = value
             }
-        )
+        }
+        return true
     }
 
     private func change(_ name: String, _ apply: () -> Void) {
@@ -313,9 +263,9 @@ struct GroupsPage: View {
         undoManager?.setActionName(name)
     }
 
-    private func remove(_ ids: Set<UUID>) {
+    private func remove(_ ids: Set<String>) {
         guard !ids.isEmpty else { return }
-        change("Remove") { settings.groups.removeAll { ids.contains($0.id) } }
+        change("Remove") { settings.groups.removeAll { ids.contains($0.id.uuidString) } }
         selection = []
     }
 }

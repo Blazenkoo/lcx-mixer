@@ -125,6 +125,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    /// Settings never gets smaller than its minimum, whatever else sets the window's limits.
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        guard sender === settingsWindow else { return frameSize }
+        let minimum = sender.frameRect(forContentRect: NSRect(origin: .zero, size: settingsMinimumSize)).size
+        return NSSize(width: max(frameSize.width, minimum.width), height: max(frameSize.height, minimum.height))
+    }
+
     func windowWillClose(_ notification: Notification) {
         guard (notification.object as? NSWindow) === mixerWindow else { return }
         DispatchQueue.main.async { MainActor.assumeIsolated { self.updateDockPresence() } }
@@ -226,10 +233,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             content.sizingOptions = []
             window.contentViewController = content
             window.setContentSize(NSSize(width: 760 * scale, height: 540 * scale))
-            updateSettingsMinimumSize(window)
             // Remembers its size and place; the first time, it opens centred.
             if !window.setFrameUsingName("SettingsWindow") { window.center() }
             window.setFrameAutosaveName("SettingsWindow")
+            // After the saved size is back, so a size saved below the minimum grows to it.
+            updateSettingsMinimumSize(window)
+            // Holds the minimum while you resize (see windowWillResize).
+            window.delegate = self
             // The window's title follows the section, as in System Settings.
             // After the change, never in the middle of SwiftUI drawing it.
             settingsTitle = SettingsNavigation.shared.$section.sink { [weak window] section in
@@ -243,11 +253,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private var settingsTitle: Any?
 
-    /// About 680 × 460 at the standard text size, larger with larger text. Grows the window if it's
-    /// now below that.
-    private func updateSettingsMinimumSize(_ window: NSWindow) {
+    /// Settings' smallest content size: 680 × 460 at the standard text size, larger with larger text.
+    private var settingsMinimumSize: NSSize {
         let scale = settings.textSize.scale
-        let minimum = NSSize(width: 680 * scale, height: 460 * scale)
+        return NSSize(width: SettingsView.minimumSize.width * scale, height: SettingsView.minimumSize.height * scale)
+    }
+
+    /// Sets Settings' minimum size, and grows the window if it's now below that.
+    private func updateSettingsMinimumSize(_ window: NSWindow) {
+        let minimum = settingsMinimumSize
         window.contentMinSize = minimum
         let current = window.contentRect(forFrameRect: window.frame).size
         if current.width < minimum.width || current.height < minimum.height {
