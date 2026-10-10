@@ -38,7 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 core: core,
                 openMixer: { [weak self] in self?.showMixer() },
                 openSettings: { [weak self] in self?.showSettings() },
-                openAbout: { [weak self] in self?.showAbout() }
+                openAbout: { [weak self] in self?.showAbout() },
+                openMuteList: { [weak self] in self?.showSettings(section: .muteList) }
             )
         })
         panel.sizingOptions = [.preferredContentSize] // the popover follows the panel's size, including text size
@@ -89,7 +90,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// smaller. That size comes from SwiftUI's layout of the content alone, never from the window's
     /// current size, so nothing can build up across changes.
     private func fitWindowsToContent() {
-        for window in [mixerWindow, settingsWindow].compactMap({ $0 }) {
+        // Settings is resizable: it only keeps a minimum size that grows with the text.
+        if let settingsWindow { updateSettingsMinimumSize(settingsWindow) }
+        for window in [mixerWindow].compactMap({ $0 }) {
             guard let content = window.contentViewController else { continue }
             content.view.layoutSubtreeIfNeeded()
             let size = content.preferredContentSize
@@ -178,7 +181,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let content = NSHostingController(rootView: ScaledRoot(settings: settings, shortcuts: true) {
                 MixerWindowView(
                     core: core,
-                    openSettings: { [weak self] in self?.showSettings() }
+                    openSettings: { [weak self] in self?.showSettings() },
+                    openMuteList: { [weak self] in self?.showSettings(section: .muteList) }
                 )
             })
             content.sizingOptions = [.preferredContentSize] // the window follows the content's size
@@ -199,27 +203,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.activate()
     }
 
-    func showSettings() {
+    /// Opens Settings, at `section` if one is given (otherwise where you left it).
+    func showSettings(section: SettingsSection? = nil) {
         popover.performClose(nil)
+        if let section { SettingsNavigation.shared.section = section }
         if settingsWindow == nil {
+            let scale = settings.textSize.scale
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 560, height: 680),
-                styleMask: [.titled, .closable],
+                contentRect: NSRect(x: 0, y: 0, width: 760 * scale, height: 540 * scale),
+                // Resizable: tables show more rows in a taller window, and large text never clips.
+                styleMask: [.titled, .closable, .resizable],
                 backing: .buffered,
                 defer: false
             )
-            window.title = "LCX Mixer Settings"
             window.isReleasedWhenClosed = false
             let content = NSHostingController(rootView: ScaledRoot(settings: settings, shortcuts: true) {
-                SettingsView(settings: settings, core: core, openAbout: { [weak self] in self?.showAbout() })
+                SettingsView(settings: settings, core: core,
+                             openAbout: { [weak self] in self?.showAbout() },
+                             openSetup: { [weak self] in self?.showWelcome() })
             })
-            content.sizingOptions = [.preferredContentSize]
+            // The window's size is yours, not the content's.
+            content.sizingOptions = []
             window.contentViewController = content
-            window.center()
+            window.setContentSize(NSSize(width: 760 * scale, height: 540 * scale))
+            updateSettingsMinimumSize(window)
+            // Remembers its size and place; the first time, it opens centred.
+            if !window.setFrameUsingName("SettingsWindow") { window.center() }
+            window.setFrameAutosaveName("SettingsWindow")
+            // The window's title follows the section, as in System Settings.
+            settingsTitle = SettingsNavigation.shared.$section.sink { [weak window] section in
+                MainActor.assumeIsolated { window?.title = section.title }
+            }
             settingsWindow = window
         }
         NSApp.activate()
         settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private var settingsTitle: Any?
+
+    /// About 680 × 460 at the standard text size, larger with larger text. Grows the window if it's
+    /// now below that.
+    private func updateSettingsMinimumSize(_ window: NSWindow) {
+        let scale = settings.textSize.scale
+        let minimum = NSSize(width: 680 * scale, height: 460 * scale)
+        window.contentMinSize = minimum
+        let current = window.contentRect(forFrameRect: window.frame).size
+        if current.width < minimum.width || current.height < minimum.height {
+            resize(window, toContent: NSSize(width: max(current.width, minimum.width), height: max(current.height, minimum.height)))
+        }
     }
 
     func showWelcome() {

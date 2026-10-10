@@ -1,44 +1,184 @@
 import SwiftUI
 
-/// A Settings section title, optionally with a description right under it.
-/// Use this for every section that has a description, so they all look the same.
-/// Text aligns to the leading edge, which follows the reading direction: left for left-to-right
-/// languages, flipping automatically for right-to-left ones. (Left to the system's defaults,
-/// grouped forms on macOS align footers to the trailing edge, which is what put them on the right.)
-struct SectionHeader: View {
-    let title: String
-    let description: String?
-    /// The first section sits at the top of the window and needs no extra space above it.
-    let first: Bool
-    @Environment(\.uiScale) private var scale
+// MARK: - Sections
 
-    init(_ title: String, description: String? = nil, first: Bool = false) {
-        self.title = title
-        self.description = description
-        self.first = first
+/// The sections of Settings, in sidebar order: Mixer, then Sources, then About.
+enum SettingsSection: String, CaseIterable, Identifiable {
+    case general, controller, browsers, groups, muteList, ignoreList, about
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: return "General"
+        case .controller: return "Controller"
+        case .browsers: return "Browsers"
+        case .groups: return "App groups"
+        case .muteList: return "Mute list"
+        case .ignoreList: return "Ignore list"
+        case .about: return "About"
+        }
     }
 
+    static let mixer: [SettingsSection] = [.general, .controller, .browsers]
+    static let sources: [SettingsSection] = [.groups, .muteList, .ignoreList]
+}
+
+/// The section Settings shows, remembered across launches.
+@MainActor
+final class SettingsNavigation: ObservableObject {
+    static let shared = SettingsNavigation()
+    private static let key = "settingsSection"
+
+    @Published var section: SettingsSection {
+        didSet { UserDefaults.standard.set(section.rawValue, forKey: Self.key) }
+    }
+
+    private init() {
+        section = UserDefaults.standard.string(forKey: Self.key).flatMap(SettingsSection.init(rawValue:)) ?? .general
+    }
+}
+
+// MARK: - Window content
+
+/// Settings: a sidebar of sections on the left, the chosen section on the right.
+struct SettingsView: View {
+    @ObservedObject var settings: AppSettings
+    @ObservedObject var core: MixerCore
+    var openAbout: () -> Void = {}
+    var openSetup: () -> Void = {}
+    @ObservedObject private var nav = SettingsNavigation.shared
+    @Environment(\.uiScale) private var scale
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title).scaledFont(AppText.headline, weight: .bold)
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            sidebar
+                .navigationSplitViewColumnWidth(min: 190 * scale, ideal: 200 * scale, max: 240 * scale)
+                .toolbar(removing: .sidebarToggle)
+        } detail: {
+            detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .scaledFont(AppText.body)
+    }
+
+    // MARK: Sidebar
+
+    private var selection: Binding<SettingsSection?> {
+        Binding(get: { nav.section }, set: { if let s = $0 { nav.section = s } })
+    }
+
+    private var sidebar: some View {
+        List(selection: selection) {
+            Section("Mixer") {
+                ForEach(SettingsSection.mixer) { sidebarRow($0) }
+            }
+            Section("Sources") {
+                ForEach(SettingsSection.sources) { sidebarRow($0) }
+            }
+            Section {
+                sidebarRow(.about)
+            }
+        }
+        .listStyle(.sidebar)
+    }
+
+    /// A section's name, with its status on the right where one is worth seeing at a glance.
+    private func sidebarRow(_ section: SettingsSection) -> some View {
+        let status = self.status(of: section)
+        let selected = nav.section == section
+        return HStack(spacing: 8 * scale) {
+            Text(section.title)
+            Spacer(minLength: 8 * scale)
+            if let status {
+                Text(status.text)
+                    .scaledFont(AppText.caption, monospacedDigit: true)
+                    .foregroundStyle(status.alert && !selected ? Color.errorText : Color.secondary)
+            }
+        }
+        .tag(section)
+        .accessibilityElement(children: .combine)
+    }
+
+    private struct SidebarStatus {
+        let text: String
+        var alert = false
+    }
+
+    private func status(of section: SettingsSection) -> SidebarStatus? {
+        switch section {
+        case .controller:
+            return core.controllerConnected ? nil : SidebarStatus(text: "Not connected", alert: true)
+        case .browsers:
+            let rows = BrowsersPage.rows(core: core)
+            guard !rows.isEmpty else { return nil }
+            return SidebarStatus(text: "\(rows.filter { $0.connections > 0 }.count) of \(rows.count)")
+        case .groups:
+            return SidebarStatus(text: "\(settings.groups.count)")
+        case .muteList:
+            return SidebarStatus(text: "\(settings.muteList.count)")
+        case .ignoreList:
+            return SidebarStatus(text: "\(settings.ignoreList.count)")
+        case .general, .about:
+            return nil
+        }
+    }
+
+    // MARK: Detail
+
+    @ViewBuilder
+    private var detail: some View {
+        switch nav.section {
+        case .general: GeneralPage(settings: settings, core: core)
+        case .controller: ControllerPage(settings: settings, core: core)
+        case .browsers: BrowsersPage(core: core)
+        case .groups: GroupsPage(settings: settings)
+        case .muteList: EntryListPage(settings: settings, kind: .mute)
+        case .ignoreList: EntryListPage(settings: settings, kind: .ignore)
+        case .about: AboutPage(core: core, openAbout: openAbout, openSetup: openSetup)
+        }
+    }
+}
+
+// MARK: - Shared pieces
+
+/// The title at the top of each section, read by VoiceOver as a heading, with an optional description.
+struct PageHeader: View {
+    let title: String
+    var description: String? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .scaledFont(AppText.headline + 5, weight: .bold)
+                .accessibilityAddTraits(.isHeader)
             if let description {
                 Text(description)
-                    .scaledFont(AppText.caption)
-                    .fontWeight(.regular)
+                    .scaledFont(AppText.callout)
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Extra space above each section, so they're easy to tell apart while scrolling.
-        .padding(.top, first ? 0 : 22 * scale)
-        .padding(.bottom, description == nil ? 0 : 6)
     }
 }
 
-/// A setting's title with an optional description underneath, inside the same row (no separator between them).
-private struct SettingLabel: View {
+/// A group's title inside a section, such as Volume in General.
+private struct GroupTitle: View {
+    let title: String
+    @Environment(\.uiScale) private var scale
+
+    var body: some View {
+        Text(title)
+            .scaledFont(AppText.headline, weight: .semibold)
+            .foregroundStyle(.primary)
+            .accessibilityAddTraits(.isHeader)
+            .padding(.top, 6 * scale)
+    }
+}
+
+/// A setting's title with an optional description underneath, inside the same row.
+struct SettingLabel: View {
     let title: String
     let description: String?
 
@@ -55,18 +195,22 @@ private struct SettingLabel: View {
     }
 }
 
-struct SettingsView: View {
+/// Forms keep a comfortable reading width however wide the window is.
+private extension View {
+    func readingWidth(_ scale: CGFloat) -> some View {
+        frame(maxWidth: 640 * scale, alignment: .leading)
+    }
+}
+
+// MARK: - General
+
+private struct GeneralPage: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var core: MixerCore
-    var openAbout: () -> Void = {}
-    @State private var newGroupName = ""
-    @State private var newGroupPrefixes = ""
     @Environment(\.uiScale) private var scale
 
     var body: some View {
         Form {
-            controllerSection
-
             Section {
                 Toggle(isOn: $settings.masterMode) {
                     SettingLabel(
@@ -91,8 +235,16 @@ struct SettingsView: View {
                     Spacer()
                     VolumeCurveGraph(natural: settings.naturalCurve)
                 }
+
+                Toggle(isOn: $settings.rememberVolumes) {
+                    SettingLabel(title: "Remember volume per app and website",
+                                 description: "Each website or app plays at the last volume you set for it. Set one YouTube tab to 40%, and every YouTube tab you open later also plays at 40%.")
+                }
             } header: {
-                SectionHeader("Volume")
+                VStack(alignment: .leading, spacing: 10 * scale) {
+                    PageHeader(title: "General")
+                    GroupTitle(title: "Volume")
+                }
             }
 
             Section {
@@ -103,47 +255,35 @@ struct SettingsView: View {
                                  description: "Scales the mixer window, menu-bar panel, pop-up and Settings. In the mixer window and Settings, ⌘− and ⌘+ step it, and ⌘0 resets it.")
                 }
                 .pickerStyle(.menu)
-                Toggle(isOn: $settings.launchAtLogin) {
-                    SettingLabel(title: "Launch at login", description: nil)
+                Toggle(isOn: $settings.showOSD) {
+                    SettingLabel(title: "Show on-screen pop-up",
+                                 description: "A short pop-up when you touch a control, a source gets a channel, or a muted source tries to play.")
                 }
                 Toggle(isOn: $settings.alwaysInDock) {
                     SettingLabel(title: "Always show in the Dock",
                                  description: "When off, the Dock icon appears only while the mixer window is open.")
                 }
-                Toggle(isOn: $settings.showOSD) {
-                    SettingLabel(title: "Show on-screen pop-up",
-                                 description: "A short pop-up when you touch a control or a source gets a channel.")
-                }
-                Toggle(isOn: $settings.rememberVolumes) {
-                    SettingLabel(title: "Remember volume per app and website",
-                                 description: "Each website or app plays at the last volume you set for it. Set one YouTube tab to 40%, and every YouTube tab you open later also plays at 40%.")
+                Toggle(isOn: $settings.launchAtLogin) {
+                    SettingLabel(title: "Launch at login", description: nil)
                 }
             } header: {
-                SectionHeader("General")
-            }
-
-            groupsSection
-            muteSection
-            ignoreSection
-
-            browsersSection
-
-            Section {
-                SettingsCredits(core: core, openAbout: openAbout)
-            } header: {
-                SectionHeader("About")
+                GroupTitle(title: "Window and startup")
             }
         }
         .formStyle(.grouped)
-        .scaledFont(AppText.body)
-        .frame(width: 560 * scale, height: 700)
+        .readingWidth(scale)
     }
+}
 
-    // MARK: - Controller
+// MARK: - Controller
 
+private struct ControllerPage: View {
+    @ObservedObject var settings: AppSettings
+    @ObservedObject var core: MixerCore
+    @Environment(\.uiScale) private var scale
     @State private var midiDevices: [String] = []
 
-    private var controllerDescription: String? {
+    private var description: String? {
         switch settings.controllerKind {
         case .launchControlXL:
             return nil
@@ -154,33 +294,6 @@ struct SettingsView: View {
         }
     }
 
-    private var controllerSection: some View {
-        Section {
-            Picker(selection: $settings.controllerKind) {
-                ForEach(ControllerKind.allCases) { kind in Text(kind.label).tag(kind) }
-            } label: {
-                SettingLabel(title: "Controller", description: core.controllerConnected
-                             ? "\(core.controllerName) is connected."
-                             : "\(core.controllerName) isn't connected.")
-            }
-
-            if settings.controllerKind != .launchControlXL {
-                Picker(selection: $settings.midiDevice) {
-                    Text(settings.controllerKind == .mackieControl ? "Find automatically" : "Choose a device").tag("")
-                    ForEach(deviceChoices, id: \.self) { name in Text(name).tag(name) }
-                } label: {
-                    SettingLabel(title: "MIDI device", description: nil)
-                }
-                .onAppear { midiDevices = MIDIController.sourceNames() }
-            }
-            if settings.controllerKind == .midiLearn {
-                MIDILearnTable(settings: settings, core: core)
-            }
-        } header: {
-            SectionHeader("Controller", description: controllerDescription, first: true)
-        }
-    }
-
     /// Available devices, plus the saved one even while it's unplugged.
     private var deviceChoices: [String] {
         var names = midiDevices
@@ -188,274 +301,121 @@ struct SettingsView: View {
         return names
     }
 
-    // MARK: - App groups
-
-    private var newGroupNameTrimmed: String { newGroupName.trimmingCharacters(in: .whitespaces) }
-    private var newGroupHasPrefix: Bool {
-        !newGroupPrefixes.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.isEmpty
-    }
-    private var canAddGroup: Bool { !newGroupNameTrimmed.isEmpty && newGroupHasPrefix }
-
-    /// Shown only when exactly one of the two fields is filled in.
-    private var newGroupHint: String? {
-        switch (newGroupNameTrimmed.isEmpty, newGroupHasPrefix) {
-        case (false, false): return "Add at least one bundle ID prefix."
-        case (true, true): return "Add a group name."
-        default: return nil
-        }
-    }
-
-    private var groupsSection: some View {
-        Section {
-            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
-                GridRow {
-                    Text("Group name")
-                    Text("Bundle ID prefixes (comma separated)")
-                    Color.clear.frame(width: 44 * scale, height: 1)
+    var body: some View {
+        Form {
+            Section {
+                Picker(selection: $settings.controllerKind) {
+                    ForEach(ControllerKind.allCases) { kind in Text(kind.label).tag(kind) }
+                } label: {
+                    SettingLabel(title: "Controller", description: core.controllerConnected
+                                 ? "\(core.controllerName) is connected."
+                                 : "\(core.controllerName) isn't connected.")
                 }
-                .scaledFont(AppText.caption, weight: .semibold)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
 
-                ForEach($settings.groups) { $group in
-                    GridRow(alignment: .center) {
-                        TextField("Group name", text: $group.name, prompt: Text("e.g. League"))
-                            .labelsHidden()
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 140 * scale)
-                            .accessibilityLabel("Group name")
-                        TextField("Bundle ID prefixes", text: $group.prefixesText, prompt: Text("e.g. com.riotgames."))
-                            .labelsHidden()
-                            .textFieldStyle(.roundedBorder)
-                            .scaledFont(AppText.body, design: .monospaced)
-                            .accessibilityLabel("Bundle ID prefixes for \(group.name.isEmpty ? "unnamed group" : group.name)")
-                        Button {
-                            settings.groups.removeAll { $0.id == group.id }
-                        } label: {
-                            Image(systemName: "minus.circle")
-                                .frame(width: 20, height: 20)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.borderless)
-                        .frame(width: 44 * scale)
-                        .help("Remove this group")
-                        .accessibilityLabel("Remove group \(group.name.isEmpty ? "without a name" : group.name)")
+                if settings.controllerKind != .launchControlXL {
+                    Picker(selection: $settings.midiDevice) {
+                        Text(settings.controllerKind == .mackieControl ? "Find automatically" : "Choose a device").tag("")
+                        ForEach(deviceChoices, id: \.self) { name in Text(name).tag(name) }
+                    } label: {
+                        SettingLabel(title: "MIDI device", description: nil)
                     }
-                    if !group.isComplete {
-                        GridRow {
-                            Text(group.name.trimmingCharacters(in: .whitespaces).isEmpty
-                                 ? "This group needs a name."
-                                 : "This group needs at least one prefix.")
-                                .scaledFont(AppText.caption)
-                                .foregroundStyle(Color.warningText)
-                                .gridCellColumns(3)
-                        }
-                    }
+                    .onAppear { midiDevices = MIDIController.sourceNames() }
                 }
+            } header: {
+                PageHeader(title: "Controller", description: description)
+            }
 
-                // New group: same pattern as the ignore list. Add stays disabled until both fields are filled.
-                GridRow(alignment: .center) {
-                    TextField("New group name", text: $newGroupName, prompt: Text("e.g. League"))
-                        .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 140 * scale)
-                        .accessibilityLabel("New group name")
-                        .onSubmit(addGroup)
-                    TextField("New group bundle ID prefixes", text: $newGroupPrefixes, prompt: Text("e.g. com.riotgames."))
-                        .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
-                        .scaledFont(AppText.body, design: .monospaced)
-                        .accessibilityLabel("Bundle ID prefixes for the new group")
-                        .onSubmit(addGroup)
-                    Button("Add", action: addGroup)
-                        .disabled(!canAddGroup)
-                        .frame(width: 44 * scale)
-                        .accessibilityLabel("Add group")
-                }
-                if let hint = newGroupHint {
-                    GridRow {
-                        Text(hint)
-                            .scaledFont(AppText.caption)
-                            .foregroundStyle(Color.warningText)
-                            .gridCellColumns(3)
-                    }
+            if settings.controllerKind == .midiLearn {
+                Section {
+                    MIDILearnTable(settings: settings, core: core)
+                } header: {
+                    GroupTitle(title: "Assignments")
                 }
             }
-        } header: {
-            SectionHeader("App groups", description: "Apps whose bundle ID starts with one of a group's prefixes share one channel, for example the League client and game. Changes apply to apps that start playing afterwards.")
         }
+        .formStyle(.grouped)
+        .readingWidth(scale)
     }
+}
 
-    private func addGroup() {
-        guard canAddGroup else { return }
-        settings.groups.append(GroupRule(name: newGroupNameTrimmed,
-                                         prefixes: newGroupPrefixes.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }))
-        newGroupName = ""
-        newGroupPrefixes = ""
-    }
+// MARK: - Browsers
 
-    // MARK: - Browsers
+struct BrowsersPage: View {
+    @ObservedObject var core: MixerCore
+    @Environment(\.uiScale) private var scale
 
-    private var browsersSection: some View {
-        Section {
-            let rows = browserRows
-            if rows.isEmpty {
-                Text("No supported browser is open.").foregroundStyle(.secondary)
-            }
-            ForEach(rows) { row in
-                HStack {
-                    Circle().fill(row.connections > 0 ? Color.green : Color.secondary).frame(width: 7, height: 7)
-                        .accessibilityHidden(true)
-                    Text(row.browser.name)
-                    Spacer()
-                    Text(row.connections == 0 ? "Extension not connected"
-                         : row.connections == 1 ? "Connected" : "Connected (\(row.connections) profiles)")
-                        .foregroundStyle(row.connections > 0 ? Color.primary : Color.secondary)
-                }
-                .accessibilityElement(children: .combine)
-            }
-            HStack {
-                SettingLabel(title: "Add the extension to a browser",
-                             description: "Open the browser's extensions page, turn on Developer mode, choose Load unpacked and select the extension folder. Works in Chrome, Edge, Brave, Arc, Vivaldi and Chromium.")
-                Spacer()
-                Button("Show extension folder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([AppPaths.extensionFolder])
-                }
-            }
-        } header: {
-            SectionHeader("Browsers", description: "Each tab in a connected browser gets its own channel. Until its extension first connects, a browser other than Chrome appears as one whole app.")
-        }
-    }
-
-    private struct BrowserRow: Identifiable {
+    struct Row: Identifiable {
         let browser: BrowserInfo
         let connections: Int
         var id: String { browser.bundleID }
     }
 
     /// Browsers that are open or connected, with how many extension connections each has.
-    private var browserRows: [BrowserRow] {
+    @MainActor
+    static func rows(core: MixerCore) -> [Row] {
         let running = Set(Browsers.running)
         return Browsers.all.compactMap { browser in
             let count = core.browserConnections.filter { $0.browser == browser }.count
-            return (count > 0 || running.contains(browser)) ? BrowserRow(browser: browser, connections: count) : nil
+            return (count > 0 || running.contains(browser)) ? Row(browser: browser, connections: count) : nil
         }
     }
 
-    // MARK: - Mute list and ignore list
-
-    private var muteSection: some View {
-        Section {
-            KeyListEditor(
-                items: $settings.muteList,
-                listName: "mute list",
-                prompt: "e.g. slack.com",
-                moveLabel: "Move to ignore list",
-                move: { item in settings.ignoreList.append(item) }
-            )
-        } header: {
-            SectionHeader("Mute list", description: "Always silenced and kept off the channels. They still show under Unassigned Audio Sources, where Unmute takes them off this list.")
+    var body: some View {
+        Form {
+            Section {
+                let rows = Self.rows(core: core)
+                if rows.isEmpty {
+                    Text("No supported browser is open.").foregroundStyle(.secondary)
+                }
+                ForEach(rows) { row in
+                    HStack {
+                        Circle().fill(row.connections > 0 ? Color.green : Color.secondary).frame(width: 7, height: 7)
+                            .accessibilityHidden(true)
+                        Text(row.browser.name)
+                        Spacer()
+                        Text(row.connections == 0 ? "Extension not connected"
+                             : row.connections == 1 ? "Connected" : "Connected (\(row.connections) profiles)")
+                            .foregroundStyle(row.connections > 0 ? Color.primary : Color.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            } header: {
+                PageHeader(title: "Browsers", description: "Each tab in a connected browser gets its own channel. Until its extension first connects, a browser other than Chrome appears as one whole app.")
+            }
+            Section {
+                HStack {
+                    SettingLabel(title: "Add the extension to a browser",
+                                 description: "Open the browser's extensions page, turn on Developer mode, choose Load unpacked and select the extension folder. Works in Chrome, Edge, Brave, Arc, Vivaldi and Chromium.")
+                    Spacer()
+                    Button("Show extension folder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([AppPaths.extensionFolder])
+                    }
+                }
+            }
         }
-    }
-
-    private var ignoreSection: some View {
-        Section {
-            KeyListEditor(
-                items: $settings.ignoreList,
-                listName: "ignore list",
-                prompt: "e.g. zoom.us",
-                moveLabel: "Move to mute list",
-                move: { item in settings.muteList.append(item) }
-            )
-        } header: {
-            SectionHeader("Ignore list", description: "Left completely alone: they play as normal and never appear in the mixer.")
-        }
+        .formStyle(.grouped)
+        .readingWidth(scale)
     }
 }
 
-/// An editable list of bundle IDs or websites, laid out like App groups: one block, no separators.
-/// Entries sit in code-font fields, so they can be edited, selected and copied. Each row can be moved
-/// to the other list or removed; the last row adds a new entry.
-private struct KeyListEditor: View {
-    @Environment(\.uiScale) private var scale
-    @Binding var items: [String]
-    let listName: String
-    let prompt: String
-    let moveLabel: String
-    let move: (String) -> Void
-    @State private var newItem = ""
+// MARK: - About
 
-    private var trimmedNew: String { newItem.trimmingCharacters(in: .whitespaces) }
+private struct AboutPage: View {
+    @ObservedObject var core: MixerCore
+    let openAbout: () -> Void
+    let openSetup: () -> Void
+    @Environment(\.uiScale) private var scale
 
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
-            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                GridRow(alignment: .center) {
-                    TextField("Entry", text: binding(at: index), prompt: Text(prompt))
-                        .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
-                        .scaledFont(AppText.body, design: .monospaced)
-                        .accessibilityLabel("\(item) on the \(listName)")
-                        .onSubmit { tidy() }
-                    HStack(spacing: 2) {
-                        Menu {
-                            Button(moveLabel) { move(item) }
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
-                        }
-                        .menuStyle(.borderlessButton)
-                        .menuIndicator(.hidden)
-                        .frame(width: 22)
-                        .help(moveLabel)
-                        .accessibilityLabel("More actions for \(item)")
-                        Button {
-                            items.removeAll { $0 == item }
-                        } label: {
-                            Image(systemName: "minus.circle")
-                                .frame(width: 20, height: 20)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Remove from the \(listName)")
-                        .accessibilityLabel("Remove \(item) from the \(listName)")
-                    }
-                    .frame(width: 52 * scale)
-                }
-            }
-            GridRow(alignment: .center) {
-                TextField("New entry", text: $newItem, prompt: Text("Bundle ID or website, \(prompt)"))
-                    .labelsHidden()
-                    .textFieldStyle(.roundedBorder)
-                    .scaledFont(AppText.body, design: .monospaced)
-                    .accessibilityLabel("Bundle ID or website to add to the \(listName)")
-                    .onSubmit(add)
-                Button("Add", action: add)
-                    .disabled(trimmedNew.isEmpty)
-                    .frame(width: 52 * scale)
-            }
+        VStack(alignment: .leading, spacing: 18 * scale) {
+            PageHeader(title: "About")
+            SettingsCredits(core: core, openAbout: openAbout)
+            Button("Show the setup steps", action: openSetup)
+                .buttonStyle(.link)
+            Spacer()
         }
-    }
-
-    private func binding(at index: Int) -> Binding<String> {
-        Binding(
-            get: { items.indices.contains(index) ? items[index] : "" },
-            set: { value in if items.indices.contains(index) { items[index] = value } }
-        )
-    }
-
-    private func add() {
-        let value = trimmedNew
-        if !value.isEmpty && !items.contains(value) { items.append(value) }
-        newItem = ""
-    }
-
-    /// After editing: trim spaces, drop empty entries and duplicates.
-    private func tidy() {
-        var seen = Set<String>()
-        let cleaned = items
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && seen.insert($0).inserted }
-        if cleaned != items { items = cleaned }
+        .padding(24 * scale)
+        .readingWidth(scale)
     }
 }
 

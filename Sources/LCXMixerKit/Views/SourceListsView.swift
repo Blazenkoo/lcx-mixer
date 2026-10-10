@@ -232,6 +232,7 @@ struct SourceTabsControl: View {
     let compact: Bool
     @Environment(\.uiScale) private var scale
     @Environment(\.colorScheme) private var colorScheme
+    @FocusState private var focused: Bool
 
     var body: some View {
         HStack(spacing: 2 * scale) {
@@ -244,7 +245,18 @@ struct SourceTabsControl: View {
                 .fill(Color.primary.opacity(0.07))
         )
         .fixedSize()
-        .focusable()
+        // Focusable like a button: only with keyboard navigation, not as soon as the window opens.
+        .focusable(interactions: .activate)
+        .focused($focused)
+        // The system ring is square; this one follows the control's rounded shape.
+        .focusEffectDisabled()
+        .overlay {
+            RoundedRectangle(cornerRadius: 9 * scale, style: .continuous)
+                .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 2.5)
+                .padding(-3 * scale)
+                .opacity(focused ? 1 : 0)
+                .accessibilityHidden(true)
+        }
         .onMoveCommand { direction in
             switch direction {
             case .left: tab = .unassigned

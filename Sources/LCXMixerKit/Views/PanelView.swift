@@ -6,6 +6,8 @@ struct PanelView: View {
     let openMixer: () -> Void
     let openSettings: () -> Void
     var openAbout: () -> Void = {}
+    /// Opens Settings at the mute list (from a Muted row's ⋯ menu).
+    var openMuteList: (() -> Void)? = nil
     @Environment(\.uiScale) private var scale
 
     var body: some View {
@@ -41,7 +43,7 @@ struct PanelView: View {
             }
 
             Divider()
-            SourceListsView(core: core, compact: true)
+            SourceListsView(core: core, compact: true, openMuteList: openMuteList)
             Divider()
 
             HStack {
