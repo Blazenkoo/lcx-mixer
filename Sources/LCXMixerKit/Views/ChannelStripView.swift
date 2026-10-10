@@ -216,7 +216,7 @@ struct VolumeBar: View {
             HStack(spacing: 6 * scale) {
                 bar
                 if let levels {
-                    LevelMeter(levels: levels, id: meterID)
+                    LevelMeter(levels: levels, id: meterID, zone: CGFloat(position))
                 }
             }
             Text(hint ?? "\(Int((position * 100).rounded()))%")

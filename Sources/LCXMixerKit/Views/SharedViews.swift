@@ -65,6 +65,8 @@ struct SourceIcon: View {
 struct LevelMeter: View {
     @ObservedObject var levels: LevelStore
     let id: String?
+    /// The channel's volume on the fader's scale: activity drops stay below it.
+    var zone: CGFloat = 1
 
     var body: some View {
         GeometryReader { geo in
@@ -73,7 +75,7 @@ struct LevelMeter: View {
                 Capsule().fill(Color.secondary.opacity(0.15))
                 if let id, id.hasPrefix("tab:") || levels.activity.contains(id) {
                     // No measurable level (tabs, untouched native apps): show activity, not a fake meter.
-                    ActivityRain(active: value > 0)
+                    ActivityRain(active: value > 0, zone: zone)
                 } else {
                 Capsule()
                     .fill(LinearGradient(colors: [.green, .green, .yellow, .red], startPoint: .bottom, endPoint: .top))
@@ -90,6 +92,8 @@ struct LevelMeter: View {
 struct HorizontalMeter: View {
     @ObservedObject var levels: LevelStore
     let id: String
+    /// The source's volume on the fader's scale: activity drops stay below it.
+    var zone: CGFloat = 1
 
     var body: some View {
         GeometryReader { geo in
@@ -97,7 +101,7 @@ struct HorizontalMeter: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.secondary.opacity(0.15))
                 if id.hasPrefix("tab:") || levels.activity.contains(id) {
-                    ActivityRain(active: value > 0, axis: .horizontal)
+                    ActivityRain(active: value > 0, zone: zone, axis: .horizontal)
                 } else {
                     Capsule().fill(Color.green.opacity(0.8)).frame(width: geo.size.width * value)
                 }

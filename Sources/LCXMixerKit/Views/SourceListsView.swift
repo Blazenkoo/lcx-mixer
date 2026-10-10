@@ -118,7 +118,7 @@ struct SourceListsView: View {
                         // Nothing is heard from a muted source: an empty bar keeps the rows lined up.
                         Capsule().fill(Color.secondary.opacity(0.15)).frame(height: 4)
                     } else {
-                        HorizontalMeter(levels: core.levels, id: s.id)
+                        HorizontalMeter(levels: core.levels, id: s.id, zone: CGFloat(core.position(of: s)))
                     }
                 }
                 .frame(width: 60 * scale)

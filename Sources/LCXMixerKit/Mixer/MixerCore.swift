@@ -325,7 +325,8 @@ final class MixerCore: ObservableObject {
             let audible = s.isAudible && !s.isMuted && !muteAll && !listMuted.contains(id)
             switch s.kind {
             case .app where native.canMeasure(id):
-                values[id] = min(1, native.level(id))
+                // On the fader's scale, so a sound at full strength peaks exactly at the fader.
+                values[id] = settings.position(forGain: min(1, native.level(id)))
             case .app, .tab:
                 // No measurable level: just "audible", shown as activity drops.
                 values[id] = audible ? 1 : 0
