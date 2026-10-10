@@ -11,9 +11,9 @@ struct MixerWindowView: View {
                 HeaderStatus(core: core)
                 Spacer()
                 Text("Output: \(core.outputName)").scaledFont(AppText.caption).foregroundStyle(.secondary)
-                Button(action: openSettings) { Image(systemName: "gearshape") }
-                    .buttonStyle(.borderless)
-                    .help("Settings")
+                // A real button, like the strips' own, with a quieter symbol so it doesn't compete with them.
+                SmallIconButton(symbol: "gearshape", help: "Settings (⌘,)", tint: .secondary, action: openSettings)
+                    .accessibilityLabel("Settings")
             }
 
             HStack(spacing: 8 * scale) {
@@ -21,6 +21,8 @@ struct MixerWindowView: View {
                     ChannelStripView(core: core, index: i)
                 }
             }
+            // The same gap above the channels as below them.
+            .padding(.top, 16 * scale)
 
             UnassignedListView(core: core, compact: false)
                 .padding(.top, 16 * scale)

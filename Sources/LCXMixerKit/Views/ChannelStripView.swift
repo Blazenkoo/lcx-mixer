@@ -196,15 +196,7 @@ struct ChannelStripView: View {
     }
 
     private func iconButton(_ symbol: String, help: String, tint: Color? = nil, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .scaledFont(11, weight: .semibold)
-                .frame(width: 24 * scale, height: 22 * scale)
-                .foregroundStyle(tint ?? Color.primary)
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .help(help)
+        SmallIconButton(symbol: symbol, help: help, tint: tint ?? Color.primary, action: action)
     }
 }
 

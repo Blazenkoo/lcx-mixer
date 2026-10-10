@@ -160,3 +160,24 @@ struct HeaderStatus: View {
         .labelStyle(.titleAndIcon)
     }
 }
+
+/// The small bordered symbol button used on the strips (Play, Mute, Unassign) and for Settings.
+struct SmallIconButton: View {
+    let symbol: String
+    let help: String
+    var tint: Color = .primary
+    let action: () -> Void
+    @Environment(\.uiScale) private var scale
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .scaledFont(11, weight: .semibold)
+                .frame(width: 24 * scale, height: 22 * scale)
+                .foregroundStyle(tint)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .help(help)
+    }
+}
