@@ -453,11 +453,13 @@ A menu-bar utility should cost next to nothing while it sits in the background.
 
 Measured on an Apple silicon MacBook with Spotify, YouTube and Twitch playing and League on a channel (CPU, 100% = one core):
 
-| State | v2.0 | v2.0.1 | v2.1 |
-| --- | --- | --- | --- |
-| Menu bar only, windows closed | ~55% · 258 MB | ~2.6% · 44 MB | **~0% · 36 MB** |
-| Mixer window visible | ~56% · 266 MB | ~13% · 200 MB | ~13% · 194 MB |
-| Mixer and About visible | ~56% | ~30% · 220 MB | ~30% |
+| State | v2.0 | v2.0.1 | v2.1 | v2.2 |
+| --- | --- | --- | --- | --- |
+| Menu bar only, windows closed | ~55% · 258 MB | ~2.6% · 44 MB | **~0% · 36 MB** | **~0.4% · 41 MB** |
+| Mixer window visible | ~56% · 266 MB | ~13% · 200 MB | ~13% · 194 MB | ~25% · 208 MB |
+| Mixer and About visible | ~56% | ~30% · 220 MB | ~30% | not measured |
+
+For v2.2, all four sources were playing and League was turned down to 32%, so every meter on screen was moving. With the window open, it redraws 30 times a second; a profile shows that time going into SwiftUI and macOS drawing the window, with almost none in LCX Mixer's own code, the new listening taps included. The earlier columns weren't necessarily measured with every source active, so the two rows above aren't a like-for-like comparison.
 
 **Measuring it yourself:** `./scripts/benchmark.sh <state> [seconds]` samples the running app with `top` every 2 s (for 5 minutes unless told otherwise) and prints a row with its average and highest CPU and its memory. Set things up first (sources playing, the window you want open), then leave the Mac alone while it runs.
 
