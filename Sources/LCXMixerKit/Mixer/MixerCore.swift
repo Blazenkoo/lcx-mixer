@@ -116,9 +116,14 @@ final class MixerCore: ObservableObject {
     var firstSourceChannel: Int { masterActive ? 1 : 0 }
     var hasFreeChannel: Bool { firstFreeChannel(includingHeld: true) != nil }
 
+    /// Sources waiting for a channel, or unassigned by you. Sources the mute list silences aren't
+    /// among them: nothing is waiting there, so they get their own quiet line (`listMutedSources`).
     var unassigned: [Source] {
-        (waiting + manual + listMuted).compactMap { sources[$0] }
+        (waiting + manual).compactMap { sources[$0] }
     }
+
+    /// Sources the mute list is silencing right now.
+    var listMutedSources: [Source] { listMuted.compactMap { sources[$0] } }
 
     func isManuallyUnassigned(_ id: String) -> Bool { manual.contains(id) }
 
@@ -251,10 +256,7 @@ final class MixerCore: ObservableObject {
                 s.bundleIDs = app.bundleIDs
                 s.detail = detail
                 if s != sources[id] { sources[id] = s }
-                if native.isControlling(id) || channel(of: id) != nil || listMuted.contains(id),
-                   permissionStatus == .authorized {
-                    native.apply(id, processObjects: app.processObjects, gain: effectiveGain(s))
-                }
+                updateTap(s)
             } else if app.isRunningOutput || assignment.isHeld(id, host: "") {
                 var s = Source(
                     id: id, kind: .app, name: app.name, detail: detail, icon: app.icon,
@@ -265,6 +267,7 @@ final class MixerCore: ObservableObject {
                 s.pids = app.pids
                 s.bundleIDs = app.bundleIDs
                 addSource(s)
+                if let added = sources[id] { updateTap(added) }
             }
         }
 
@@ -274,12 +277,33 @@ final class MixerCore: ObservableObject {
         }
     }
 
+    /// Brings a native app's tap up to date. On a channel, silenced by the mute list, or turned down
+    /// before: the tap follows its volume. Otherwise it plays untouched, with a tap that only
+    /// listens while a meter is on screen.
+    private func updateTap(_ s: Source) {
+        guard s.kind == .app, permissionStatus == .authorized else { return }
+        if native.isControlling(s.id) || channel(of: s.id) != nil || listMuted.contains(s.id) {
+            native.apply(s.id, processObjects: s.processObjects, gain: effectiveGain(s), playing: s.isPlaying)
+        } else {
+            native.listen(s.id, processObjects: s.processObjects, playing: s.isPlaying)
+        }
+    }
+
     /// Set by the app: true while a window or panel showing meters is on screen. The meter timer
     /// and the taps' level measurement run only then.
     var metersWanted = false {
         didSet {
             guard metersWanted != oldValue else { return }
             native.setMetering(metersWanted)
+            if metersWanted {
+                // Just after the window or panel has drawn, so starting taps doesn't delay it.
+                DispatchQueue.main.async { [weak self] in
+                    MainActor.assumeIsolated {
+                        guard let self, self.metersWanted else { return }
+                        for s in self.sources.values where s.kind == .app { self.updateTap(s) }
+                    }
+                }
+            }
             meterTimer?.invalidate()
             meterTimer = nil
             if metersWanted {
@@ -299,7 +323,7 @@ final class MixerCore: ObservableObject {
         for (id, s) in sources {
             let audible = s.isAudible && !s.isMuted && !muteAll && !listMuted.contains(id)
             switch s.kind {
-            case .app where native.isControlling(id):
+            case .app where native.canMeasure(id):
                 values[id] = min(1, native.level(id))
             case .app, .tab:
                 // No measurable level: just "audible", shown as activity drops.
@@ -460,7 +484,7 @@ final class MixerCore: ObservableObject {
                 s.permissionNeeded = false
                 sources[id] = s
             }
-            native.apply(id, processObjects: s.processObjects, gain: effectiveGain(s))
+            native.apply(id, processObjects: s.processObjects, gain: effectiveGain(s), playing: s.isPlaying)
         }
     }
 
@@ -479,6 +503,9 @@ final class MixerCore: ObservableObject {
             } else if channel(of: id) != nil {
                 tapIfPossible(id)
             }
+        }
+        if metersWanted {
+            for s in sources.values where s.kind == .app { updateTap(s) }
         }
     }
 
@@ -670,7 +697,7 @@ final class MixerCore: ObservableObject {
         sources[id] = s
         settings.remember(volume: s.volume, for: s.rememberKey)
         switch s.kind {
-        case .app: native.apply(id, processObjects: s.processObjects, gain: effectiveGain(s))
+        case .app: native.apply(id, processObjects: s.processObjects, gain: effectiveGain(s), playing: s.isPlaying)
         case .tab: sendTabVolume(s)
         }
     }
@@ -678,7 +705,7 @@ final class MixerCore: ObservableObject {
     private func applyGainAndMute(_ id: String) {
         guard let s = sources[id] else { return }
         switch s.kind {
-        case .app: native.apply(id, processObjects: s.processObjects, gain: effectiveGain(s))
+        case .app: native.apply(id, processObjects: s.processObjects, gain: effectiveGain(s), playing: s.isPlaying)
         case .tab: sendTabMute(s)
         }
     }

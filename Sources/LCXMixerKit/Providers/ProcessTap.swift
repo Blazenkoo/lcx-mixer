@@ -15,6 +15,9 @@ final class TapRenderState {
     let handoverTarget = UnsafeMutablePointer<Float>.allocate(capacity: 1)
     /// Counts audio buffers processed, so the main thread knows our sound is flowing.
     let renders = UnsafeMutablePointer<Int32>.allocate(capacity: 1)
+    /// Non-zero while the tap only listens: the app's own sound plays as it is and ours is silent,
+    /// so the meter reads the app's sound before our gain and hand-over.
+    let listening = UnsafeMutablePointer<Int32>.allocate(capacity: 1)
     var skipInputBuffers = 0
     var sampleRate: Float = 48000
     static let handoverSeconds: Float = 0.02
@@ -27,6 +30,7 @@ final class TapRenderState {
         metering.initialize(to: 0)
         handoverTarget.initialize(to: 0)
         renders.initialize(to: 0)
+        listening.initialize(to: 0)
         currentGain = gain
     }
 
@@ -36,6 +40,7 @@ final class TapRenderState {
         metering.deallocate()
         handoverTarget.deallocate()
         renders.deallocate()
+        listening.deallocate()
     }
 
     /// Finds logical channel `channel` in a buffer list, starting at buffer `start`.
@@ -82,6 +87,7 @@ final class TapRenderState {
         let outChannels = min(2, TapRenderState.channelCount(outList, start: 0))
         let target = targetGain.pointee
         let measure = metering.pointee != 0
+        let meterApp = listening.pointee != 0
         var peak: Float = 0
 
         // The hand-over fade for this buffer, combined with the gain ramp into one start→end ramp.
@@ -103,9 +109,10 @@ final class TapRenderState {
                 let step = (endGain - startGain) / Float(frames)
                 if measure {
                     for f in 0..<frames {
-                        let sample = inp.ptr[f * inp.stride] * gain
+                        let raw = inp.ptr[f * inp.stride]
+                        let sample = raw * gain
                         out.ptr[f * out.stride] = sample
-                        let a = abs(sample)
+                        let a = abs(meterApp ? raw : sample)
                         if a > peak { peak = a }
                         gain += step
                     }
@@ -125,6 +132,10 @@ final class TapRenderState {
 }
 
 /// One process tap + private aggregate device that re-plays one app's audio at our gain.
+///
+/// It can also only listen: then the app's own sound plays as it is, ours stays silent, and the
+/// tap just measures the level for a meter. `takeOver(outputDevice:)` and `handBack()` switch
+/// between listening and controlling the volume, with the same crossfade as starting and stopping.
 final class ProcessTap {
     let processObjects: [AudioObjectID]
     let state: TapRenderState
@@ -132,8 +143,13 @@ final class ProcessTap {
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var procID: AudioDeviceIOProcID?
     private var description: CATapDescription?
-    /// True while the app's own sound still plays alongside ours (before the hand-in completes).
+    /// True while the app's own sound still plays (before the hand-in completes, or while listening).
     private var originalPlaying = false
+    /// True while the tap only listens, for a meter.
+    private(set) var isListening = false
+    /// Whether this macOS lets a running tap change its mute, which every crossfade relies on.
+    private var canSwitchMute = false
+    private var outputDevice = AudioObjectID(kAudioObjectUnknown)
 
     init(processObjects: [AudioObjectID], gain: Float) {
         self.processObjects = processObjects
@@ -156,7 +172,8 @@ final class ProcessTap {
 
     /// Starts the tap. With `seamless`, the app's own sound keeps playing until ours flows, then
     /// the two crossfade; if macOS doesn't allow that, it falls back to switching straight over.
-    func start(outputDevice: AudioObjectID, seamless: Bool = true) -> Bool {
+    /// With `listenOnly`, the app's own sound keeps playing and the tap only measures.
+    func start(outputDevice: AudioObjectID, seamless: Bool = true, listenOnly: Bool = false) -> Bool {
         let marker = Signposts.poi.beginInterval("Tap start")
         defer { Signposts.poi.endInterval("Tap start", marker) }
         guard let outputUID = CA.deviceUID(outputDevice), !processObjects.isEmpty else { return false }
@@ -165,7 +182,7 @@ final class ProcessTap {
         description.uuid = UUID()
         description.name = "LCX Mixer tap"
         description.isPrivate = true
-        description.muteBehavior = seamless ? .unmuted : .mutedWhenTapped
+        description.muteBehavior = (seamless || listenOnly) ? .unmuted : .mutedWhenTapped
         self.description = description
 
         var tap = AudioObjectID(kAudioObjectUnknown)
@@ -175,13 +192,19 @@ final class ProcessTap {
             return false
         }
         tapID = tap
-        if seamless && !canChangeMute() {
+        canSwitchMute = canChangeMute()
+        if seamless && !listenOnly && !canSwitchMute {
             // This macOS doesn't let a running tap change its mute: switch straight over instead.
             AudioHardwareDestroyProcessTap(tapID)
             tapID = AudioObjectID(kAudioObjectUnknown)
             return start(outputDevice: outputDevice, seamless: false)
         }
-        originalPlaying = seamless
+        originalPlaying = seamless || listenOnly
+        isListening = listenOnly
+        // Until a hand-in completes, what you hear is the app's own sound: the meter reads that.
+        state.listening.pointee = (seamless || listenOnly) ? 1 : 0
+        state.handoverTarget.pointee = 0
+        self.outputDevice = outputDevice
         state.sampleRate = Float(CA.get(outputDevice, kAudioDevicePropertyNominalSampleRate, default: Float64(48000)))
 
         let aggregate: [String: Any] = [
@@ -233,7 +256,9 @@ final class ProcessTap {
             stop()
             return false
         }
-        if seamless {
+        if listenOnly {
+            // Nothing more: the app plays on, and our silent copy only feeds the meter.
+        } else if seamless {
             handIn(attempt: 0)
         } else {
             state.handoverTarget.pointee = 1   // straight over, with a short fade-in
@@ -241,23 +266,58 @@ final class ProcessTap {
         return true
     }
 
+    /// From listening to controlling the volume: the app's own sound is muted as ours fades in.
+    /// Returns false if the tap couldn't be restarted (only on a macOS that can't crossfade).
+    func takeOver(outputDevice: AudioObjectID) -> Bool {
+        guard isListening else { return true }
+        isListening = false
+        if canSwitchMute {
+            handIn(attempt: 0)
+            return true
+        }
+        // This macOS can't change a running tap's mute: start over as a controlling tap.
+        stop()
+        return start(outputDevice: outputDevice, seamless: false)
+    }
+
+    /// From controlling the volume back to listening: the app's own sound returns as ours fades
+    /// out, and the tap stays to measure. Returns false if the sound couldn't be handed back; the
+    /// caller then replaces the tap.
+    func handBack() -> Bool {
+        guard !isListening else { return true }
+        if !originalPlaying {
+            guard setMute(.unmuted) else { return false }
+            originalPlaying = true
+        }
+        isListening = true
+        state.listening.pointee = 1
+        state.handoverTarget.pointee = 0
+        return true
+    }
+
     /// Once our sound is flowing, mutes the app's own sound and fades ours in at the same moment.
     private func handIn(attempt: Int) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
-            guard let self, self.tapID != kAudioObjectUnknown, self.originalPlaying else { return }
+            guard let self, self.tapID != kAudioObjectUnknown, self.originalPlaying, !self.isListening else { return }
             if self.state.renders.pointee < 2 && attempt < 25 {
                 self.handIn(attempt: attempt + 1)   // not flowing yet (up to ~0.5 s)
                 return
             }
             if self.setMute(.mutedWhenTapped) {
                 self.originalPlaying = false
+                self.state.listening.pointee = 0
+                self.state.handoverTarget.pointee = 1
+            } else if self.setMute(.mutedWhenTapped) {
+                Log.audio.info("Seamless hand-in needed a second try")
+                self.originalPlaying = false
+                self.state.listening.pointee = 0
                 self.state.handoverTarget.pointee = 1
             } else {
-                // Couldn't mute the original: never leave it doubled. Switch straight over.
+                // The app's own sound can't be muted while the tap runs: never leave it doubled.
+                // Start over as a tap that mutes it from the start.
                 Log.audio.info("Seamless hand-in failed; switching over directly")
-                self.state.handoverTarget.pointee = 1
-                self.originalPlaying = false
-                _ = self.setMute(.mutedWhenTapped)
+                self.stop()
+                _ = self.start(outputDevice: self.outputDevice, seamless: false)
             }
         }
     }

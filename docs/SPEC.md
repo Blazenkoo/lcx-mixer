@@ -2,7 +2,7 @@
 
 This is the product specification LCX Mixer was built from, kept up to date with what is built. For build and install steps, see the [README](../README.md).
 
-**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2.0 code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual · v2.0.1 performance: nothing draws while it can't be seen, lighter background checks · v2.1 event-driven: the app sleeps until something changes, and native apps at 100% play untouched · v2.1.1 crossfaded hand-over when a tap starts or ends · v2.2 foundation, nothing new to see or hear: the mixer core split into parts, one extension file per site, automated tests, unified logging and performance markers, CI and code scanning, a security policy, and a version on saved settings.
+**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2.0 code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual · v2.0.1 performance: nothing draws while it can't be seen, lighter background checks · v2.1 event-driven: the app sleeps until something changes, and native apps at 100% play untouched · v2.1.1 crossfaded hand-over when a tap starts or ends · v2.2 foundation, nothing new to see or hear: the mixer core split into parts, one extension file per site, automated tests, unified logging and performance markers, CI and code scanning, a security policy, and a version on saved settings. Also: real level meters for native apps at 100% while the mixer is open, mute-listed sources on one quiet line instead of in Unassigned, and copy and paste in text fields.
 
 ## Contents
 
@@ -135,7 +135,7 @@ Sources that are playing but not on a channel appear in an **Unassigned Audio So
 - **Drag a source onto a channel** to place it there. If that channel is occupied, the two swap: the previous occupant moves to Unassigned as "unassigned by you."
 - **Unassigning a channel** frees it at once. The audio carries on at its current volume.
 - **Manual unassigning lasts until the source closes.** If League is unassigned and then reopened later, it's a new source and takes a channel normally.
-- **Mute list (permanent, in Settings):** apps or websites that are always silenced and never take a channel, such as a chat app's notification sounds. They still show in Unassigned, labelled "Muted by list", where **Unmute** takes them off the list; the sound comes back at once and the source takes a channel like a new one. Any source can be added from its "Always mute" menu, in Unassigned or on a channel strip. Native apps are silenced through a process tap (so the purple recording dot shows while they're silenced); tabs through the browser's tab mute.
+- **Mute list (permanent, in Settings):** apps or websites that are always silenced and never take a channel, such as a chat app's notification sounds. While one is being silenced, a single grey line below Unassigned says so ("Muted by your list: WhatsApp"), with **Unmute** to take it off the list; the sound comes back at once and the source takes a channel like a new one. They're not listed among the unassigned sources, since they aren't waiting for a channel. Any source can be added from its "Always mute" menu, in Unassigned or on a channel strip. Native apps are silenced through a process tap (so the purple recording dot shows while they're silenced); tabs through the browser's tab mute.
 - **Ignore list (permanent, in Settings):** apps or websites the mixer leaves completely alone: they play as normal, never take a channel and never show in Unassigned, such as system sounds or FaceTime. Any source in Unassigned can be added via its "Always ignore" menu.
 - **One list per entry:** an app or website is on the mute list or the ignore list, never both. Adding or moving it to one list, or typing it in, takes it off the other. Moving a source from the mute list to the ignore list gives its sound back first.
 
@@ -219,7 +219,7 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 3. **Name and detail:** short name ("Spotify", "League", "Discord") plus one truncated line of detail (page title, or "Client + game").
 4. **Status:** glyph (play, pause or mute) plus a coloured dot, as in [Status colours](#status-colours).
 5. **Volume:** a vertical bar with the percentage. A ghost marker shows where the physical fader sits. When soft takeover is waiting, a short hint replaces the percentage: "Move fader down".
-6. **Level meter:** a real meter for native apps whose volume is below 100% or muted (their sound passes through the app). Native apps at 100% play untouched, so they show activity like browser tabs. For browser tabs, macOS can't separate each tab's sound, so while a tab is audible the bar shows activity instead, made to look unlike a level: neutral drops land at random spots and ripple outward both ways, fading as they spread. With Reduce Motion, each drop glows and fades in place.
+6. **Level meter:** a real meter for native apps. Below 100% or muted, their sound passes through the app, which measures it. At 100% their sound plays untouched, and while a meter is on screen the app listens to it to measure the level, without changing it (since v2.2; before, they showed activity like browser tabs). For browser tabs, macOS can't separate each tab's sound, so while a tab is audible the bar shows activity instead, made to look unlike a level: neutral drops land at random spots and ripple outward both ways, fading as they spread. With Reduce Motion, each drop glows and fades in place.
 7. **Buttons:** play/pause (tabs only), mute, and unassign (×).
 
 **Interactions**
@@ -233,6 +233,7 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 
 - Starting the app yourself, including after Quit, opens the mixer window. Starting at login keeps it in the menu bar.
 - The window always fits its content: exactly eight strips wide, and as tall as what's inside. It isn't resized by hand; changing the text size resizes it, keeping its top-left corner in place.
+- While the app is in the Dock, the menu bar shows the standard LCX Mixer, Edit and Window menus. Their shortcuts work in every LCX Mixer window either way: ⌘C, ⌘V, ⌘X, ⌘A and ⌘Z in text fields, ⌘W to close, ⌘, for Settings and ⌘Q to quit.
 
 **Welcome window and About**
 
@@ -399,7 +400,7 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [ ] Tab activity drops: ripple normally, glow in place with Reduce Motion
 - [ ] Mackie Control on a real surface (X-Touch): faders, motors, buttons, lights, scribble strips
 
-**v2.2 test checklist** (nothing should look, sound or behave differently from 2.1.1)
+**v2.2 test checklist** (apart from the three changes at the end, nothing should look, sound or behave differently from 2.1.1)
 
 - [x] All Swift and extension tests pass, for every commit of the split
 - [x] The app builds, installs and comes up with the channels where they were
@@ -412,6 +413,9 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [ ] Quitting and reopening puts the channels back
 - [ ] The logs show up in `log stream`, and the markers in Instruments
 - [ ] Benchmark matches 2.1.1
+- [ ] ⌘C, ⌘V, ⌘X, ⌘A and ⌘Z work in Settings' text fields
+- [ ] A native app at 100% shows a real meter while the mixer is open; turning it down and back up sounds as smooth as before; the purple dot goes 2 s after closing the mixer (with every app at 100%)
+- [ ] A mute-listed source shows on the grey line below Unassigned, not in the list, and Unmute works
 
 ## Testing, logging and auditing
 
@@ -442,7 +446,7 @@ A menu-bar utility should cost next to nothing while it sits in the background.
 - **Meters only when shown.** Level meters update only while the mixer window or the menu-bar panel is open.
 - **Cheap effects.** Tower glows are soft strokes rather than a per-frame blur; app icons are made grey once per app; the Settings thumbnail runs at 30 fps.
 - **Woken by changes, not timers.** Core Audio and macOS notify the app when an app starts or stops sound, quits, or the microphone's mute or the output volume changes. A check every 10 s remains only as a safety net. The meter timer runs only while meters are on screen.
-- **Tap only when needed.** A native app at 100% and unmuted plays untouched: no audio work and no purple dot. Its tap starts when its volume goes below 100% or it's muted, and is released 2 s after it's back at 100%.
+- **Tap only when needed.** A native app at 100% and unmuted plays untouched. With the windows closed, that means no tap at all: no audio work and no purple dot. While the mixer window or panel is open, an app that's playing gets a tap that only listens, for its meter. It's released 2 s after the app goes quiet or the last meter leaves the screen. A tap takes over the volume when it goes below 100% or the app is muted (crossfading from listening, if it was), and goes back to listening, or away, 2 s after the volume is back at 100%.
 - **Crossfaded hand-over.** A new tap starts with the app's own sound still playing; once ours flows, the original is muted and ours fades in over 20 ms. Releasing does the reverse. If macOS doesn't allow changing a running tap's mute, it switches straight over with a short fade instead.
 - **Audio on the device's own thread.** A tap's audio is processed directly on the output device's real-time thread (already in its audio workgroup), with no extra thread hop, no memory allocation and no locks; level measuring is off while no meter is visible.
 - **Quiet extension.** Tab scripts find players as they start instead of scanning every 2 s; the background worker checks in every 5 s.
@@ -466,7 +470,7 @@ LCX Mixer has no network attack surface: no server, no web app, nothing listenin
 - **Both ends verify each other:** a connection is accepted only if the other process runs under the same user account and is signed with the app's own code signature. A fake listener or another program can't send or receive mixer commands.
 - **MIDI:** the app only reads from the controller you choose and sends light messages only to it (none with MIDI learn). MIDI learn assignments are stored locally.
 - **Permissions:** only System audio recording, used to control the volume of apps on a channel. No microphone or accessibility permissions: microphone mute only changes the input device's mute or volume setting. The app makes no network requests at all; site icons come from the browser's local icon cache.
-- **Purple menu-bar dot:** while a native app's volume is below 100% or it's muted, macOS shows its purple system-audio-recording indicator, naming LCX Mixer in Control Center. It is expected and explained in the README; browser tabs never trigger it.
+- **Purple menu-bar dot:** while a native app's volume is below 100% or it's muted, or while the mixer window or panel shows native apps' meters, macOS shows its purple system-audio-recording indicator, naming LCX Mixer in Control Center. It is expected and explained in the README; browser tabs never trigger it.
 - **Logs** stay in macOS's unified log on the Mac, with anything that could identify you marked private.
 
 How to report a security problem, the full list of what the app exposes, and the three undocumented macOS functions it uses: [SECURITY.md](../SECURITY.md).

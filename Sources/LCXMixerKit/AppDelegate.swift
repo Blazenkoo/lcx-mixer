@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        MainMenu.install(target: self, about: #selector(menuShowAbout(_:)), settings: #selector(menuShowSettings(_:)))
         core.onOSD = { [weak self] message in self?.osd.show(message) }
         core.onStatusChange = { [weak self] in self?.updateStatusIcon() }
 
@@ -146,6 +147,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if core.micMuted { tip += " · microphone muted" }
         statusItem?.button?.toolTip = tip
     }
+
+    @objc private func menuShowAbout(_ sender: Any?) { showAbout() }
+    @objc private func menuShowSettings(_ sender: Any?) { showSettings() }
 
     @objc private func togglePopover(_ sender: Any?) {
         guard let button = statusItem.button else { return }

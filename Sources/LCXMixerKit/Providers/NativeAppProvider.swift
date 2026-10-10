@@ -31,48 +31,99 @@ final class NativeAppProvider {
 
     // MARK: - Control
 
-    func isControlling(_ id: String) -> Bool { engine.hasTap(id) }
+    /// A tap that controls the app's volume (below 100% or muted).
+    func isControlling(_ id: String) -> Bool { engine.isControlling(id) }
 
-    /// Pending releases of taps that went back to full volume.
-    private var releaseWork: [String: DispatchWorkItem] = [:]
+    /// Whether the app's level can be measured: it has a tap, controlling or only listening.
+    func canMeasure(_ id: String) -> Bool { engine.hasTap(id) }
 
-    /// Applies a source's effective gain. An app at full volume plays untouched: no tap, no audio
-    /// work, no purple recording dot. The tap starts only when the gain is below 100% (or muted),
-    /// and is released again 2 s after the gain returns to 100%, so a fader resting near the top
-    /// doesn't start and stop it over and over.
-    func apply(_ id: String, processObjects: [AudioObjectID], gain: Float) {
-        if gain < 0.999 {
-            releaseWork.removeValue(forKey: id)?.cancel()
+    /// True while a meter is on screen: then apps at 100% get a tap that only listens.
+    private var metering = false
+
+    /// Taps that just went back to 100%, or lost their meter, are settled after a short pause.
+    private var settleWork: [String: DispatchWorkItem] = [:]
+
+    /// Whether each app was producing sound when last applied. Only those get a listening tap:
+    /// an app that's quiet has no level to show.
+    private var playing: [String: Bool] = [:]
+    private func wantsMeter(_ id: String) -> Bool { metering && (playing[id] ?? false) }
+
+    /// Applies a source's effective gain. An app at full volume plays untouched. With no meter on
+    /// screen, that means no tap at all: no audio work and no purple recording dot. While a meter
+    /// is on screen, a tap only listens, to measure the level. Below 100% (or muted), the tap
+    /// controls the volume. Going back to 100%, it stays in control for 2 s, so a fader resting
+    /// near the top doesn't hand over again and again, then listens or lets go.
+    func apply(_ id: String, processObjects: [AudioObjectID], gain: Float, playing isPlaying: Bool) {
+        playing[id] = isPlaying
+        switch TapPolicy.need(gain: gain, wantsMeter: wantsMeter(id)) {
+        case .control:
+            settleWork.removeValue(forKey: id)?.cancel()
             engine.ensureTap(id: id, processObjects: processObjects, gain: gain)
-        } else if engine.hasTap(id) {
-            engine.ensureTap(id: id, processObjects: processObjects, gain: 1)
-            guard releaseWork[id] == nil else { return }
-            let work = DispatchWorkItem { [weak self] in
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    self.releaseWork[id] = nil
-                    if (self.engine.gain(id: id) ?? 1) >= 0.999 { self.engine.removeTap(id: id) }
-                }
+        case .listen, .untouched:
+            if engine.isControlling(id) {
+                engine.ensureTap(id: id, processObjects: processObjects, gain: 1)
+                scheduleSettle(id)
+            } else {
+                listen(id, processObjects: processObjects, playing: isPlaying)
             }
-            releaseWork[id] = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
         }
     }
 
-    /// Stops controlling a source; its audio returns to normal.
+    /// For an app that needs no volume control: a tap that only listens while a meter is on screen
+    /// and the app is playing.
+    func listen(_ id: String, processObjects: [AudioObjectID], playing isPlaying: Bool) {
+        playing[id] = isPlaying
+        guard !engine.isControlling(id) else { return }
+        if wantsMeter(id) {
+            settleWork.removeValue(forKey: id)?.cancel()
+            engine.ensureListening(id: id, processObjects: processObjects)
+        } else if engine.hasTap(id) {
+            scheduleSettle(id)
+        }
+    }
+
     func release(_ id: String) {
-        releaseWork.removeValue(forKey: id)?.cancel()
+        settleWork.removeValue(forKey: id)?.cancel()
+        playing[id] = nil
         engine.removeTap(id: id)
     }
 
-    /// Level measurement in the taps, only while a meter is on screen.
-    func setMetering(_ on: Bool) { engine.setMetering(on) }
+    /// Level measurement in the taps, only while a meter is on screen. When the last meter goes,
+    /// the listening taps follow 2 s later, so closing and reopening the panel doesn't stop and
+    /// start them. (When a meter appears, MixerCore asks for the taps it needs.)
+    func setMetering(_ on: Bool) {
+        metering = on
+        engine.setMetering(on)
+        if !on {
+            for id in engine.listeningIDs { scheduleSettle(id) }
+        }
+    }
 
     func level(_ id: String) -> Float { engine.level(id: id) }
 
+    private func scheduleSettle(_ id: String) {
+        guard settleWork[id] == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated { self?.settle(id) }
+        }
+        settleWork[id] = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
+    }
+
+    private func settle(_ id: String) {
+        settleWork[id] = nil
+        guard engine.hasTap(id) else { return }
+        switch TapPolicy.settle(controlling: engine.isControlling(id), gain: engine.gain(id: id) ?? 1, wantsMeter: wantsMeter(id)) {
+        case .keep: break
+        case .listen: engine.handBack(id: id)
+        case .remove: engine.removeTap(id: id)
+        }
+    }
+
     func releaseAll() {
-        releaseWork.values.forEach { $0.cancel() }
-        releaseWork.removeAll()
+        settleWork.values.forEach { $0.cancel() }
+        settleWork.removeAll()
+        playing.removeAll()
         engine.stopAll()
     }
 

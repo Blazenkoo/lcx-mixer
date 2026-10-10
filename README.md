@@ -101,7 +101,7 @@ LCX Mixer has **no network attack surface**: there is no server or web app, and 
 - Site icons come from the browser's local icon cache. The app makes no network requests.
 - Logs stay in macOS's own log on your Mac, with anything that could identify you hidden.
 - The only permission requested is System audio recording. No microphone access: muting the microphone only switches the input device's mute (or input volume) setting, and the app never listens to it.
-- **About the purple dot:** while a native app's volume is below 100% or it's muted, macOS shows a purple dot in the menu bar, its standard sign that an app is capturing system audio. That's LCX Mixer taking over the app's sound to set its volume. At 100%, the app plays untouched and the dot goes away. Click the dot or open Control Center to see the app's name. An orange dot would mean a microphone is in use, which LCX Mixer never does.
+- **About the purple dot:** while a native app's volume is below 100% or it's muted, macOS shows a purple dot in the menu bar, its standard sign that an app is capturing system audio. That's LCX Mixer taking over the app's sound to set its volume. The dot also shows while the mixer window or the menu-bar panel is open, because LCX Mixer then listens to playing native apps at 100% to draw their level meters; their sound itself stays untouched. With the windows closed and every app at 100%, the dot goes away. Click the dot or open Control Center to see the app's name. An orange dot would mean a microphone is in use, which LCX Mixer never does.
 
 Found a security problem? Please report it privately, as described in [SECURITY.md](SECURITY.md), which also lists everything the app exposes and how it's protected.
 

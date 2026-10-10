@@ -10,7 +10,8 @@ final class MuteListTests: XCTestCase {
         m.report(tab(1))
         XCTAssertEqual(m.core.listMuted, [tabID(1)])
         XCTAssertTrue(m.core.channels.allSatisfy { $0 == nil })
-        XCTAssertEqual(m.core.unassigned.map(\.id), [tabID(1)])
+        XCTAssertTrue(m.core.unassigned.isEmpty)
+        XCTAssertEqual(m.core.listMutedSources.map(\.id), [tabID(1)])
     }
 
     func testAlwaysMuteTakesTheTabOffItsChannel() {

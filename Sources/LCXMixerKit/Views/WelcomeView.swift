@@ -39,6 +39,8 @@ final class RoundedWindow: NSWindow {
     override var canBecomeMain: Bool { true }
     /// Esc closes it, like a sheet.
     override func cancelOperation(_ sender: Any?) { close() }
+    /// ⌘W too. A borderless window has no close button, so the standard version would only beep.
+    override func performClose(_ sender: Any?) { close() }
 }
 
 /// Lets the rounded windows be dragged by their visual. The window's own background-drag doesn't

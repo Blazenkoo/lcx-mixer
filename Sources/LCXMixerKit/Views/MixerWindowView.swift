@@ -49,7 +49,43 @@ struct UnassignedListView: View {
                     row(s)
                 }
             }
+            let muted = core.listMutedSources
+            if !muted.isEmpty {
+                mutedLine(muted)
+            }
         }
+    }
+
+    /// What the mute list is silencing right now: one quiet line rather than rows, since nothing
+    /// is waiting and nothing is wrong. Shown only while something is actually being silenced.
+    @ViewBuilder
+    private func mutedLine(_ muted: [Source]) -> some View {
+        HStack(spacing: 6 * scale) {
+            Image(systemName: "speaker.slash")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text("Muted by your list: " + muted.map(\.displayName).joined(separator: ", "))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 8)
+            if muted.count == 1, let s = muted.first {
+                Button("Unmute") { core.removeFromMuteList(s.id) }
+                    .buttonStyle(.link)
+                    .help("Take \(s.name) off the mute list")
+            } else {
+                Menu("Unmute") {
+                    ForEach(muted) { s in
+                        Button(s.displayName) { core.removeFromMuteList(s.id) }
+                    }
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Take a source off the mute list")
+            }
+        }
+        .scaledFont(AppText.caption)
+        .padding(.top, 2 * scale)
     }
 
     @ViewBuilder
@@ -60,8 +96,6 @@ struct UnassignedListView: View {
                 Text(s.displayName).scaledFont(12, weight: .medium).lineLimit(1).truncationMode(.tail)
                 if s.permissionNeeded {
                     Text("Permission needed").scaledFont(AppText.status, weight: .medium).foregroundStyle(Color.warningText)
-                } else if core.isListMuted(s.id) {
-                    Text("Muted by list").scaledFont(AppText.status, weight: .medium).foregroundStyle(Color.errorText)
                 } else if !compact {
                     Text(core.isManuallyUnassigned(s.id) ? "Unassigned by you" : "Waiting for a free channel")
                         .scaledFont(AppText.caption2).foregroundStyle(.secondary)
@@ -74,10 +108,6 @@ struct UnassignedListView: View {
             if s.permissionNeeded {
                 Button("Open Settings") { AudioCapturePermission.openSystemSettings() }
                     .controlSize(.small)
-            } else if core.isListMuted(s.id) {
-                Button("Unmute") { core.removeFromMuteList(s.id) }
-                    .controlSize(.small)
-                    .help("Take \(s.name) off the mute list")
             } else {
                 Button("Assign") { core.assign(s.id) }
                     .controlSize(.small)
@@ -85,9 +115,7 @@ struct UnassignedListView: View {
                     .help(core.hasFreeChannel ? "Put on the first free channel" : "No free channel")
             }
             Menu {
-                if !core.isListMuted(s.id) {
-                    Button("Always mute") { core.alwaysMute(s.id) }
-                }
+                Button("Always mute") { core.alwaysMute(s.id) }
                 Button("Always ignore") { core.ignore(s.id) }
             } label: {
                 Image(systemName: "ellipsis")
