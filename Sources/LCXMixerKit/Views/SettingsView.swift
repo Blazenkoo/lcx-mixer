@@ -84,42 +84,44 @@ struct SettingsView: View {
     }
 
     /// Three groups that always stay open, with a thin line between them: Mixer, Sources, and
-    /// About on its own.
+    /// About on its own. The group names are plain rows, not section headers: macOS lets you
+    /// collapse a sidebar section from its header (and ignores asking it not to), which could
+    /// hide About or a whole group.
     private var sidebar: some View {
         List(selection: selection) {
-            Section {
-                ForEach(SettingsSection.mixer) { sidebarRow($0) }
-            } header: {
-                Text("Mixer")
-            }
-            .collapsible(false)
-            Section {
-                ForEach(SettingsSection.sources) { sidebarRow($0) }
-            } header: {
-                VStack(alignment: .leading, spacing: 10 * scale) {
-                    sidebarSeparator
-                    Text("Sources")
-                }
-            }
-            .collapsible(false)
-            Section {
-                sidebarRow(.about)
-            } header: {
-                sidebarSeparator
-            }
-            .collapsible(false)
+            sidebarGroupTitle("Mixer")
+            ForEach(SettingsSection.mixer) { sidebarRow($0) }
+            sidebarGroupTitle("Sources", separated: true)
+            ForEach(SettingsSection.sources) { sidebarRow($0) }
+            sidebarSeparator
+            sidebarRow(.about)
         }
         .listStyle(.sidebar)
     }
 
-    /// A thin horizontal line. (In the stack, since a header on its own lays a divider out
-    /// vertically.)
+    /// A group's name, styled like a sidebar heading. It can't be selected, and the arrow keys
+    /// pass over it.
+    private func sidebarGroupTitle(_ title: String, separated: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 10 * scale) {
+            if separated {
+                Divider().accessibilityHidden(true)
+            }
+            Text(title)
+                .scaledFont(AppText.subheadline, weight: .semibold)
+                .foregroundStyle(.secondary)
+                .accessibilityAddTraits(.isHeader)
+        }
+        .padding(.top, separated ? 4 * scale : 0)
+        .selectionDisabled()
+    }
+
+    /// A thin horizontal line. (In a stack, so it's laid out horizontally whatever holds it.)
     private var sidebarSeparator: some View {
         VStack(spacing: 0) {
             Divider()
         }
-        .padding(.top, 4 * scale)
         .accessibilityHidden(true)
+        .selectionDisabled()
     }
 
     /// A section's name, with its status on the right where one is worth seeing at a glance.
