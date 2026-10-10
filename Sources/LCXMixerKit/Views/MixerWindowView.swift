@@ -46,11 +46,14 @@ struct UnassignedListView: View {
                 Text("Nothing waiting").scaledFont(AppText.caption).foregroundStyle(.tertiary)
             } else {
                 ForEach(core.unassigned) { s in
+                    // In the window, a divider between rows; the panel keeps its compact list.
+                    if !compact && s.id != core.unassigned.first?.id { Divider() }
                     row(s)
                 }
             }
             let muted = core.listMutedSources
             if !muted.isEmpty {
+                if !compact { Divider() }
                 mutedLine(muted)
             }
         }
