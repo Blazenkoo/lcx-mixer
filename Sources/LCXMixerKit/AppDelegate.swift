@@ -231,8 +231,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if !window.setFrameUsingName("SettingsWindow") { window.center() }
             window.setFrameAutosaveName("SettingsWindow")
             // The window's title follows the section, as in System Settings.
+            // After the change, never in the middle of SwiftUI drawing it.
             settingsTitle = SettingsNavigation.shared.$section.sink { [weak window] section in
-                MainActor.assumeIsolated { window?.title = section.title }
+                DispatchQueue.main.async { MainActor.assumeIsolated { window?.title = section.title } }
             }
             settingsWindow = window
         }

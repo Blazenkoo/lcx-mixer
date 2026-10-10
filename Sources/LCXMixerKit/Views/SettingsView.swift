@@ -51,23 +51,32 @@ struct SettingsView: View {
     @Environment(\.uiScale) private var scale
 
     var body: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
+        // A plain sidebar and content side by side. (A NavigationSplitView in this AppKit-hosted
+        // window stopped drawing when the section changed.)
+        HStack(spacing: 0) {
             sidebar
                 // Wide enough for every name with its status beside it, at every text size.
-                .frame(minWidth: 210 * scale, idealWidth: 220 * scale)
-                .navigationSplitViewColumnWidth(min: 210 * scale, ideal: 220 * scale, max: 260 * scale)
-                .toolbar(removing: .sidebarToggle)
-        } detail: {
+                .frame(width: 220 * scale)
+            Divider()
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .id(nav.section)
         }
         .scaledFont(AppText.body)
     }
 
     // MARK: Sidebar
 
+    /// The list reports a new selection while it updates itself, so the section changes just
+    /// after, never in the middle of drawing.
     private var selection: Binding<SettingsSection?> {
-        Binding(get: { nav.section }, set: { if let s = $0 { nav.section = s } })
+        Binding(
+            get: { nav.section },
+            set: { new in
+                guard let new, new != nav.section else { return }
+                DispatchQueue.main.async { MainActor.assumeIsolated { SettingsNavigation.shared.section = new } }
+            }
+        )
     }
 
     private var sidebar: some View {
