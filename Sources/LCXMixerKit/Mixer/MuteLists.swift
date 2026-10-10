@@ -30,6 +30,12 @@ struct MuteLists {
     }
 
     func isMuted(_ s: Source) -> Bool { Self.list(muteList, contains: Self.keys(of: s)) }
+
+    /// The mute-list entry a source matches, as it's written on the list.
+    func muteEntry(for s: Source) -> String? {
+        let keys = Self.keys(of: s)
+        return muteList.first { !$0.isEmpty && keys.contains($0) }
+    }
     func isIgnored(_ s: Source) -> Bool { Self.list(ignoreList, contains: Self.keys(of: s)) }
 
     /// Sources whose place on the mute list changed, in the order they're met. Ignored sources

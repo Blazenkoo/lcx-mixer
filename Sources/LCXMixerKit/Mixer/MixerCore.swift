@@ -22,17 +22,18 @@ final class MixerCore: ObservableObject {
     /// Who sits on which channel, who waits, who is unassigned (ChannelAssignment keeps the books).
     @Published private(set) var assignment = ChannelAssignment(channels: MixerCore.channelCount) {
         didSet {
+            if assignment.listMuted != oldValue.listMuted { noteAttempts() }
             guard assignment.channels != oldValue.channels else { return }
             for i in 0..<MixerCore.channelCount where oldValue.channels[i] != assignment.channels[i] { resetKnobs(i) }
             scheduleRefresh()
             saveLayout()
         }
     }
-    @Published private(set) var sources: [String: Source] = [:] { didSet { scheduleRefresh(); saveLayout() } }
+    @Published private(set) var sources: [String: Source] = [:] { didSet { scheduleRefresh(); saveLayout(); noteAttempts() } }
     var channels: [String?] { assignment.channels }
     var waiting: [String] { assignment.waiting }
     var manual: [String] { assignment.manual }
-    /// Sources silenced by the mute list: shown in Unassigned, never on a channel.
+    /// Sources silenced by the mute list: shown in the Muted tab, never on a channel.
     var listMuted: [String] { assignment.listMuted }
     @Published private(set) var muteAll = false { didSet { scheduleRefresh() } }
     /// The Mac's current microphone is muted (Solo button).
@@ -610,6 +611,21 @@ final class MixerCore: ObservableObject {
     }
 
     /// Adds the source's app or website to the mute list; it leaves its channel and goes silent.
+    /// Moves a muted source from the mute list to the ignore list: its sound comes back and it
+    /// leaves the mixer. The ignore list goes first, so it's let go of without taking a channel.
+    func ignoreInstead(_ id: String) {
+        guard let s = sources[id] else { return }
+        let keys = Set(MuteLists.keys(of: s))
+        let key = MuteLists.primaryKey(of: s)
+        if !key.isEmpty && !settings.ignoreList.contains(key) { settings.ignoreList.append(key) }
+        settings.muteList.removeAll { keys.contains($0) }
+    }
+
+    /// The mute-list entry that silences a source, as it's written on the list.
+    func muteListEntry(_ id: String) -> String? {
+        sources[id].flatMap { lists.muteEntry(for: $0) }
+    }
+
     func alwaysMute(_ id: String) {
         guard let s = sources[id] else { return }
         let key = MuteLists.primaryKey(of: s)
@@ -1035,7 +1051,7 @@ final class MixerCore: ObservableObject {
         scheduleRefresh()
     }
 
-    private func applyIgnoreList() {
+    func applyIgnoreList() {
         for id in lists.ignored(in: sources) {
             // Moved here from the mute list: give the sound back before letting go of it.
             if listMuted.contains(id) {
@@ -1050,6 +1066,44 @@ final class MixerCore: ObservableObject {
 
     /// The mute and ignore lists as they stand in Settings.
     private var lists: MuteLists { MuteLists(muteList: settings.muteList, ignoreList: settings.ignoreList) }
+
+    // MARK: - Muted sources trying to play
+
+    /// Sources the mute list silences that keep trying to make sound (see PlayAttempts).
+    @Published private(set) var tryingToPlay: Set<String> = []
+    private var attempts = PlayAttempts()
+    private var attemptsCheck: DispatchWorkItem?
+
+    /// Called whenever sources or the mute list's sources change, and when a pending threshold
+    /// passes. Cheap: it looks only at the silenced sources.
+    private func noteAttempts() {
+        var sounding: [String: Bool] = [:]
+        for id in listMuted {
+            if let s = sources[id] { sounding[id] = s.isAudible }
+        }
+        let (popUps, recheck) = attempts.update(sounding: sounding, now: Date())
+        if attempts.trying != tryingToPlay { tryingToPlay = attempts.trying }
+        for id in popUps {
+            if let s = sources[id] { announceAttempt(s) }
+        }
+        attemptsCheck?.cancel()
+        attemptsCheck = nil
+        if let recheck {
+            let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.noteAttempts() } }
+            attemptsCheck = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + recheck + 0.05, execute: work)
+        }
+    }
+
+    /// Wherever you are: the pop-up, and a VoiceOver announcement.
+    private func announceAttempt(_ s: Source) {
+        osd("–", title: s.displayName, value: "Muted by your list", icon: s.icon, duration: 4, source: s)
+        guard let app = NSApp else { return }
+        NSAccessibility.post(element: app, notification: .announcementRequested, userInfo: [
+            .announcement: "\(s.name) is trying to play, but it's muted by your list.",
+            .priority: NSAccessibilityPriorityLevel.high.rawValue,
+        ])
+    }
 
     private func silenceListed(_ id: String) {
         guard let s = sources[id] else { return }

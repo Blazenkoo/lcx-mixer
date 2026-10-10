@@ -14,6 +14,25 @@ final class MuteListTests: XCTestCase {
         XCTAssertEqual(m.core.listMutedSources.map(\.id), [tabID(1)])
     }
 
+    func testMutedSourceShowsItsMatchingEntry() {
+        let m = TestMixer(self) { $0.muteList = ["www.youtube.com"] }
+        m.report(tab(1))
+        XCTAssertEqual(m.core.muteListEntry(tabID(1)), "www.youtube.com")
+    }
+
+    func testIgnoreInsteadMovesTheEntryToTheIgnoreList() {
+        let m = TestMixer(self) { $0.muteList = ["www.youtube.com"] }
+        m.report(tab(1))
+        m.core.ignoreInstead(tabID(1))
+        XCTAssertEqual(m.settings.ignoreList.filter { $0 == "www.youtube.com" }, ["www.youtube.com"])
+        XCTAssertFalse(m.settings.muteList.contains("www.youtube.com"))
+        m.core.applyIgnoreList()
+        m.core.applyMuteList()
+        XCTAssertNil(m.core.sources[tabID(1)])
+        XCTAssertTrue(m.core.listMuted.isEmpty)
+        XCTAssertTrue(m.core.channels.allSatisfy { $0 == nil })
+    }
+
     func testAlwaysMuteTakesTheTabOffItsChannel() {
         let m = TestMixer(self)
         m.report(tab(1), tab(2, host: "www.twitch.tv"))

@@ -41,7 +41,7 @@ struct PanelView: View {
             }
 
             Divider()
-            UnassignedListView(core: core, compact: true)
+            SourceListsView(core: core, compact: true)
             Divider()
 
             HStack {

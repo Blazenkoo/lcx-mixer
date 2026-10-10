@@ -25,6 +25,14 @@ final class MuteListsTests: XCTestCase {
         XCTAssertTrue(MuteLists(muteList: ["com.riotgames.LeagueofLegends.LeagueClientUx"], ignoreList: []).isMuted(league))
     }
 
+    func testTheMatchingEntryIsReportedAsWritten() {
+        let league = app("League", bundles: ["com.riotgames.LeagueofLegends.LeagueClientUx"])
+        let lists = MuteLists(muteList: ["web.whatsapp.com", "com.riotgames.LeagueofLegends.LeagueClientUx"], ignoreList: [])
+        XCTAssertEqual(lists.muteEntry(for: league), "com.riotgames.LeagueofLegends.LeagueClientUx")
+        XCTAssertEqual(lists.muteEntry(for: site("web.whatsapp.com", id: "tab:browser:1")), "web.whatsapp.com")
+        XCTAssertNil(lists.muteEntry(for: site("www.youtube.com", id: "tab:browser:2")))
+    }
+
     func testATabMatchesByWebsite() {
         let tab = site("www.youtube.com", id: "tab:browser:1")
         XCTAssertEqual(MuteLists.keys(of: tab), ["www.youtube.com"])
