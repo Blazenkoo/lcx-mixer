@@ -83,6 +83,12 @@ final class MIDIController {
         guard started else { return }
         let newSource = findEndpoint(count: MIDIGetNumberOfSources(), get: MIDIGetSource)
         let newDest = findEndpoint(count: MIDIGetNumberOfDestinations(), get: MIDIGetDestination)
+        // Kept in the log (notice level), so a controller that isn't found can be diagnosed later.
+        let seen = Self.endpointSummary()
+        if seen != lastSummary {
+            lastSummary = seen
+            Log.midi.notice("MIDI devices now: \(seen, privacy: .public); match source \(newSource != 0), destination \(newDest != 0)")
+        }
         let wasConnected = isConnected
         if newSource != source {
             if source != 0 { MIDIPortDisconnectSource(inPort, source) }
@@ -94,7 +100,7 @@ final class MIDIController {
         isConnected = source != 0 && (!needsOutput || destination != 0)
         if isConnected != wasConnected || (isConnected && destChanged) {
             let state = isConnected ? "connected" : "disconnected"
-            Log.midi.info("Controller \(state, privacy: .public)")
+            Log.midi.notice("Controller \(state, privacy: .public)")
             onConnectionChange?(isConnected)
         }
     }
@@ -110,6 +116,23 @@ final class MIDIController {
     }
 
     // MARK: - Private
+
+    private var lastSummary = ""
+
+    /// Every MIDI source and destination by name, with "(offline)" where Core MIDI says so.
+    private static func endpointSummary() -> String {
+        func names(_ count: Int, _ get: (Int) -> MIDIEndpointRef) -> [String] {
+            (0..<count).map { i in
+                let e = get(i)
+                var offline: Int32 = 0
+                MIDIObjectGetIntegerProperty(e, kMIDIPropertyOffline, &offline)
+                return (displayName(e) ?? "?") + (offline != 0 ? " (offline)" : "")
+            }
+        }
+        let sources = names(MIDIGetNumberOfSources(), MIDIGetSource).joined(separator: ", ")
+        let dests = names(MIDIGetNumberOfDestinations(), MIDIGetDestination).joined(separator: ", ")
+        return "sources [\(sources)] destinations [\(dests)]"
+    }
 
     private func findEndpoint(count: Int, get: (Int) -> MIDIEndpointRef) -> MIDIEndpointRef {
         for i in 0..<count {
