@@ -43,6 +43,7 @@ struct Source: Identifiable, Equatable {
     var windowBounds: CGRect?
 
     var isTwitch: Bool { host.hasSuffix("twitch.tv") }
+    var isSpotify: Bool { kind == .tab && (host == "spotify.com" || host.hasSuffix(".spotify.com")) }
 
     /// The site name, plus the browser when several are in use ("YouTube · Brave").
     var nameWithBrowser: String {

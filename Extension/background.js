@@ -191,6 +191,9 @@ function onAppMessage(msg) {
     case 'seekBy':
       sendCmd(msg.tabId, { action: 'seekBy', seconds: msg.seconds });
       break;
+    case 'like':
+      sendCmd(msg.tabId, { action: 'like' });
+      break;
     case 'reloadTab':
       needsReload.delete(msg.tabId);
       healAttempts.delete(msg.tabId);
@@ -207,6 +210,13 @@ function onAppMessage(msg) {
 }
 
 chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (msg && msg.type === 'cmdResult' && sender.tab) {
+    const r = msg.result || {};
+    if (port && typeof r.action === 'string') {
+      try { port.postMessage({ type: 'cmdResult', tabId: sender.tab.id, action: r.action, result: String(r.result) }); } catch (e) { /* port closed */ }
+    }
+    return;
+  }
   if (!msg || msg.type !== 'frameState' || !sender.tab) return;
   const tabId = sender.tab.id;
   let frames = frameStates.get(tabId);

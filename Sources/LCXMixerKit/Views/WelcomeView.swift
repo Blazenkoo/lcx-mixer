@@ -116,7 +116,7 @@ struct WelcomeView: View {
                     .overlay(WindowDragArea())
 
                 VStack(alignment: .leading, spacing: 14 * scale) {
-                    Text("Three things to set up")
+                    Text("Getting set up")
                         .scaledFont(AppText.headline, weight: .semibold)
                     step(1, done: core.permissionStatus == .authorized,
                          title: "Allow system audio recording",
@@ -131,10 +131,10 @@ struct WelcomeView: View {
                         Button("Show folder") { NSWorkspace.shared.activateFileViewerSelecting([AppPaths.extensionFolder]) }
                     }
                     step(3, done: core.controllerConnected,
-                         title: "Connect your controller",
+                         title: "Connect a controller (optional)",
                          detail: core.controllerConnected
                             ? "\(core.controllerName) is ready."
-                            : "Plug in \(core.controllerName), or pick another controller in Settings.",
+                            : "The mixer works from its window and the menu bar. To use \(core.controllerName), plug it in, or pick another controller in Settings.",
                          doneLabel: "Connected") {
                         Button("Settings…", action: openSettings)
                     }

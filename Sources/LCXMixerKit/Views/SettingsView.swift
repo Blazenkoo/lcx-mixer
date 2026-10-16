@@ -149,7 +149,8 @@ struct SettingsView: View {
     private func status(of section: SettingsSection) -> SidebarStatus? {
         switch section {
         case .controller:
-            return core.controllerConnected ? nil : SidebarStatus(text: "Not connected", alert: true)
+            // Working without a controller is fine, so there's nothing to flag here.
+            return nil
         case .browsers:
             let rows = BrowsersPage.rows(core: core)
             guard !rows.isEmpty else { return nil }
@@ -253,9 +254,10 @@ private struct GeneralPage: View {
     var body: some View {
         Form {
             Section {
-                Toggle(isOn: $settings.masterMode) {
+                // Remembered separately with and without a controller; only the current one shows.
+                Toggle(isOn: core.hardwarePresent ? $settings.masterMode : $settings.masterModeWithoutController) {
                     SettingLabel(
-                        title: "Use fader 1 as master volume",
+                        title: core.hardwarePresent ? "Use fader 1 as master volume" : "Use channel 1 as master volume",
                         description: core.masterSupported
                             ? nil
                             : "\(core.outputName) sets its volume in hardware, so macOS can't control it. This turns on automatically when you switch to an output that supports it."
@@ -348,9 +350,16 @@ private struct ControllerPage: View {
                 Picker(selection: $settings.controllerKind) {
                     ForEach(ControllerKind.allCases) { kind in Text(kind.label).tag(kind) }
                 } label: {
-                    SettingLabel(title: "Controller", description: core.controllerConnected
+                    SettingLabel(title: "Controller", description: core.hardwarePresent
                                  ? "\(core.controllerName) is connected."
-                                 : "\(core.controllerName) isn't connected.")
+                                 : "No controller connected. The mixer works from its window and the menu bar.")
+                }
+
+                Picker(selection: $settings.spotifyHold) {
+                    ForEach(SpotifyHold.allCases) { choice in Text(choice.label).tag(choice) }
+                } label: {
+                    SettingLabel(title: "Holding play on Spotify",
+                                 description: "What holding a channel's play button for 2 seconds does on Spotify. Elsewhere it reloads the tab.")
                 }
 
                 if settings.controllerKind != .launchControlXL {

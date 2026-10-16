@@ -12,6 +12,7 @@
   // Event names carry the build, so copies left in a tab by older builds never hear new commands.
   const CMD_EVENT = 'lcxmixer:cmd:' + BUILD;
   const STATE_EVENT = 'lcxmixer:state:' + BUILD;
+  const RESULT_EVENT = 'lcxmixer:result:' + BUILD;
   const handed = Array.isArray(window.__lcxMixerMedia) ? window.__lcxMixerMedia : [];
 
   const media = new Set();
@@ -270,6 +271,14 @@
         jumpLive();
         setTimeout(report, 300);
         break;
+      case 'like': {
+        // The player lives in the top frame; only it answers.
+        if (window.top !== window) break;
+        let result = 'unavailable';
+        try { result = site.like?.() || 'unavailable'; } catch (err) { result = 'unavailable'; }
+        document.dispatchEvent(new CustomEvent(RESULT_EVENT, { detail: JSON.stringify({ action: 'like', result }) }));
+        break;
+      }
     }
   };
   document.addEventListener(CMD_EVENT, onCmd);

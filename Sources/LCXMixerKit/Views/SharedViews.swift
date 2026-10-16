@@ -117,19 +117,15 @@ struct HeaderStatus: View {
 
     var body: some View {
         HStack(spacing: 12 * scale) {
+            // Without a controller the mixer simply works on screen; nothing calls it a mode.
             Label {
-                Text(core.controllerConnected ? "\(core.controllerName) connected" : "Controller not connected")
+                Text(core.hardwarePresent ? "\(core.controllerName) connected" : "Audio mixer active")
             } icon: {
-                Circle().fill(core.controllerConnected ? Color.green : Color.red).frame(width: 7 * scale, height: 7 * scale)
+                Circle().fill(Color.green).frame(width: 7 * scale, height: 7 * scale)
             }
-            .foregroundStyle(core.controllerConnected ? Color.secondary : Color.errorText)
+            .foregroundStyle(Color.secondary)
 
-            if core.muteAll {
-                Label("All media muted", systemImage: "speaker.slash.fill").foregroundStyle(Color.errorText).fontWeight(.medium)
-            }
-            if core.micMuted {
-                Label("Microphone muted", systemImage: "mic.slash.fill").foregroundStyle(Color.errorText).fontWeight(.medium)
-            }
+            MuteToggles(core: core)
             if core.chromeProblem {
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([AppPaths.extensionFolder])
@@ -162,6 +158,72 @@ struct HeaderStatus: View {
         }
         .scaledFont(AppText.status)
         .labelStyle(.titleAndIcon)
+    }
+}
+
+/// Media and Microphone: mute all media or the microphone from the screen, in step with the
+/// controller's Mute and Solo. Each is an icon with its label, solid red while muted.
+struct MuteToggles: View {
+    @ObservedObject var core: MixerCore
+
+    var body: some View {
+        HStack(spacing: 6) {
+            MuteButton(title: "Media", symbol: "speaker.wave.2.fill", mutedSymbol: "speaker.slash.fill",
+                       isOn: core.muteAll, enabled: true,
+                       help: core.muteAll ? "All media is muted" : "Mute all media",
+                       accessibilityName: "Mute all media") { core.toggleMuteAll() }
+            // Dimmed rather than hidden, so the row doesn't shift when you switch microphones.
+            MuteButton(title: "Microphone", symbol: "mic.fill", mutedSymbol: "mic.slash.fill",
+                       isOn: core.micMuted, enabled: core.micMutable,
+                       help: core.micMutable ? (core.micMuted ? "The microphone is muted" : "Mute the microphone") : "Can't be muted by apps",
+                       accessibilityName: "Mute the microphone") { core.toggleMicrophone() }
+        }
+    }
+}
+
+private struct MuteButtonStyle: ButtonStyle {
+    let isOn: Bool
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.uiScale) private var scale
+
+    func makeBody(configuration: Configuration) -> some View {
+        let fill: Color = isOn
+            ? Color.red.opacity(configuration.isPressed ? 0.65 : 0.85)
+            : Color.primary.opacity(configuration.isPressed ? 0.2 : 0.1)
+        configuration.label
+            .padding(.horizontal, 7 * scale)
+            .padding(.vertical, 2 * scale)
+            .foregroundStyle(isOn ? Color.white : Color.primary)
+            .background(RoundedRectangle(cornerRadius: 5 * scale).fill(fill))
+            .opacity(isEnabled ? 1 : 0.4)
+            .contentShape(RoundedRectangle(cornerRadius: 5 * scale))
+    }
+}
+
+/// A button that turns solid red while its mute is on; VoiceOver reads it as a toggle.
+private struct MuteButton: View {
+    let title: String
+    let symbol: String
+    let mutedSymbol: String
+    let isOn: Bool
+    let enabled: Bool
+    let help: String
+    let accessibilityName: String
+    let action: () -> Void
+
+    var body: some View {
+        // Drawn by hand: macOS greys out a prominent button whenever its window isn't active, and
+        // the mute state has to read at a glance even then.
+        Button(action: action) { Label(title, systemImage: isOn ? mutedSymbol : symbol) }
+            .buttonStyle(MuteButtonStyle(isOn: isOn))
+            .labelStyle(.titleAndIcon)
+        .scaledFont(AppText.status)
+        .disabled(!enabled)
+        .help(help)
+        .accessibilityLabel(accessibilityName)
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityHint(enabled ? "" : "Can't be muted by apps")
     }
 }
 

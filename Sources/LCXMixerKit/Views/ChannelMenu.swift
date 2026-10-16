@@ -19,9 +19,14 @@ enum ChannelMenu {
         Button("Always mute \(s.name)") { core.alwaysMute(s.id) }
     }
 
-    /// Channels a source on `index` can be moved to.
+    /// Channels a source on `index` can be moved to. Without a controller the free channels all
+    /// sit at the end, so they're offered once.
     static func targets(core: MixerCore, from index: Int) -> [Int] {
-        (core.firstSourceChannel..<MixerCore.channelCount).filter { $0 != index }
+        let all = (core.firstSourceChannel..<MixerCore.channelCount).filter { $0 != index }
+        guard !core.hardwarePresent else { return all }
+        let occupied = all.filter { core.source(onChannel: $0) != nil }
+        let firstFree = all.first { core.source(onChannel: $0) == nil }
+        return occupied + (firstFree.map { [$0] } ?? [])
     }
 
     static func label(core: MixerCore, channel ch: Int) -> String {

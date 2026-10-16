@@ -152,8 +152,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func updateStatusIcon() {
-        statusItem?.button?.image = StatusIcon.make(connected: core.controllerConnected, muteAll: core.muteAll, micMuted: core.micMuted)
-        var tip = core.controllerConnected ? "LCX Mixer" : "LCX Mixer — controller not connected"
+        // No slash for a missing controller: without one, the mixer works on screen.
+        statusItem?.button?.image = StatusIcon.make(connected: true, muteAll: core.muteAll, micMuted: core.micMuted)
+        var tip = "LCX Mixer"
         if core.micMuted { tip += " · microphone muted" }
         statusItem?.button?.toolTip = tip
     }
@@ -332,6 +333,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func updateMetersWanted() {
         let mixerVisible = mixerWindow.map { $0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible) } ?? false
         core.metersWanted = mixerVisible || popover.isShown
+        // A pointer can't be over something that's gone (hover doesn't always report leaving).
+        if !popover.isShown { core.pointer(inside: false, area: "panel") }
+        if !mixerVisible { core.pointer(inside: false, area: "window") }
     }
 
     private func present(_ window: RoundedWindow?) {

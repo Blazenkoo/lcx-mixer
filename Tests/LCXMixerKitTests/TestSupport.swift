@@ -47,12 +47,14 @@ final class TestMixer {
     let browser = BrowserConnection(id: 1, browser: nil, browserPID: nil)
     private(set) var popUps: [OSDMessage] = []
 
-    init(_ test: XCTestCase, configure: (AppSettings) -> Void = { _ in }) {
+    /// `controllerPresent: false` starts the mixer as it runs without a controller (channels close up).
+    init(_ test: XCTestCase, controllerPresent: Bool = true, configure: (AppSettings) -> Void = { _ in }) {
         store = TestStore.fresh(for: test)
         settings = AppSettings(defaults: store)
         configure(settings)
         core = MixerCore(settings: settings, controller: controller, layoutStore: store)
         core.onOSD = { [weak self] message in self?.popUps.append(message) }
+        if controllerPresent { core.setHardwarePresent(true) }
     }
 
     /// One report from the browser: every tab it has right now. Tabs left out count as closed.

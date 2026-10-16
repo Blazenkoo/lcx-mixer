@@ -77,6 +77,33 @@ struct ChannelAssignment: Equatable {
     mutating func addListMuted(_ id: String) { listMuted.append(id) }
     mutating func removeListMuted(_ id: String) { listMuted.removeAll { $0 == id } }
 
+    /// Without a controller there are no gaps: from `first` on, every source moves up past the
+    /// empty channels above it, keeping its order. Returns the channels that changed.
+    @discardableResult
+    mutating func closeGaps(from first: Int) -> [Int] {
+        guard first < channels.count else { return [] }
+        let inOrder = channels[first...].compactMap { $0 }
+        var changed: [Int] = []
+        for ch in first..<channels.count {
+            let id = ch - first < inOrder.count ? inOrder[ch - first] : nil
+            if channels[ch] != id {
+                set(ch, id)
+                changed.append(ch)
+            }
+        }
+        return changed
+    }
+
+    /// Makes room on `first` by moving every source from there down one channel. Returns the
+    /// source that was on the last channel and no longer fits, if any.
+    mutating func shiftDown(from first: Int) -> String? {
+        guard first < channels.count else { return nil }
+        let pushedOff = channels[channels.count - 1]
+        for ch in stride(from: channels.count - 1, to: first, by: -1) { set(ch, channels[ch - 1]) }
+        set(first, nil)
+        return pushedOff
+    }
+
     /// Takes a source off every list. Its channel, if any, is cleared separately.
     mutating func forget(_ id: String) {
         waiting.removeAll { $0 == id }

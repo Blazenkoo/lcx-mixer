@@ -115,6 +115,12 @@ export function makePage({ host = 'www.example.com', pathname = '/', elements = 
       document.addEventListener('lcxmixer:state:' + build, (e) => seen.push(JSON.parse(e.detail)));
       return seen;
     },
+    /** Every answer to a command (Liked Songs) a build sends from now on. */
+    results(build) {
+      const seen = [];
+      document.addEventListener('lcxmixer:result:' + build, (e) => seen.push(JSON.parse(e.detail)));
+      return seen;
+    },
     command(build, message) {
       document.dispatchEvent(new FakeEvent('lcxmixer:cmd:' + build, { detail: JSON.stringify(message) }));
     },

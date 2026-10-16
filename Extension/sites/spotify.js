@@ -75,6 +75,20 @@
         btn.click();
         return true;
       },
+      // Holding play on the controller: add the playing song to Liked Songs with Spotify's own
+      // button. A song that's already liked is left alone (that button would open a playlist menu,
+      // never unlike). Episodes, ads, a signed-out page or a changed player: 'unavailable'.
+      like() {
+        const widget = document.querySelector('[data-testid="now-playing-widget"]');
+        if (!widget) return 'unavailable';
+        const isSong = !!widget.querySelector('a[href*="/track/"], a[href*="/album/"], a[href*="spotify:track:"]');
+        if (!isSong) return 'unavailable';
+        const button = widget.querySelector('button[data-testid="add-button"]');
+        if (!button) return 'unavailable';
+        if (button.getAttribute('aria-checked') === 'true') return 'already';
+        button.click();
+        return 'added';
+      },
       canSpeed: () => false,
       canSeek: () => !!progressInput(),
       seekBy(seconds) {

@@ -25,6 +25,7 @@ final class MixerCore: ObservableObject {
             if assignment.listMuted != oldValue.listMuted { noteAttempts() }
             guard assignment.channels != oldValue.channels else { return }
             for i in 0..<MixerCore.channelCount where oldValue.channels[i] != assignment.channels[i] { resetKnobs(i) }
+            if !hardwarePresent { scheduleCloseGaps() }
             scheduleRefresh()
             saveLayout()
         }
@@ -40,6 +41,20 @@ final class MixerCore: ObservableObject {
     @Published private(set) var micMuted = false { didSet { scheduleRefresh() } }
     @Published private(set) var faders: [FaderState] = Array(repeating: FaderState(), count: MixerCore.channelCount)
     @Published private(set) var controllerConnected = false { didSet { onStatusChange?() } }
+    /// Whether a controller counts as present. It turns true as soon as one connects, and false
+    /// only once it has been gone for `controllerGrace`, so a loose cable changes nothing. Without
+    /// one, channels close up and channel 1 follows its own master setting. Nothing in the app
+    /// calls this a mode.
+    @Published private(set) var hardwarePresent = false
+    /// How long a controller may be gone before the mixer carries on without it.
+    var controllerGrace: TimeInterval = 5
+    private var graceGeneration = 0
+    /// Whether the current microphone can be muted by apps (the Microphone button is dimmed if not).
+    @Published private(set) var micMutable = true
+    /// Areas the pointer is over (the mixer window, the panel). Without a controller, channels
+    /// don't close up while it's inside one, so you never click a row that just slid up.
+    private var pointerAreas = Set<String>()
+    private var closeGapsScheduled = false
     /// The current controller's name, e.g. "Launch Control XL".
     @Published private(set) var controllerName = ""
     /// The MIDI learn target waiting for a control to be moved, if any.
@@ -113,7 +128,9 @@ final class MixerCore: ObservableObject {
 
     // MARK: - Derived state
 
-    var masterActive: Bool { settings.masterMode && masterSupported }
+    var masterActive: Bool {
+        (hardwarePresent ? settings.masterMode : settings.masterModeWithoutController) && masterSupported
+    }
     var firstSourceChannel: Int { masterActive ? 1 : 0 }
     var hasFreeChannel: Bool { firstFreeChannel(includingHeld: true) != nil }
 
@@ -152,6 +169,7 @@ final class MixerCore: ObservableObject {
 
     /// Hint shown while a fader waits for soft takeover, nil when attached.
     func takeoverHint(channel ch: Int) -> String? {
+        guard hardwarePresent else { return nil } // no fader to move
         let target: Float
         if masterActive && ch == 0 {
             target = masterVolume
@@ -169,6 +187,9 @@ final class MixerCore: ObservableObject {
         loadLayout()
 
         chrome.onTabs = { [weak self] connection, tabs in MainActor.assumeIsolated { self?.handleTabs(tabs, from: connection) } }
+        chrome.onCommandResult = { [weak self] connection, tabId, action, result in
+            MainActor.assumeIsolated { self?.commandResult(connection, tabId: tabId, action: action, result: result) }
+        }
         chrome.onConnectionsChange = { [weak self] connections in MainActor.assumeIsolated { self?.browsersChanged(connections) } }
         chrome.start()
 
@@ -185,12 +206,16 @@ final class MixerCore: ObservableObject {
         native.startListening()
         microphone.onChange = { [weak self] in self?.microphoneChanged() }
         microphone.startListening()
+        microphoneChanged()
         listenToMasterVolume()
         let safety = mainTimer(every: 10) { [weak self] in self?.poll() }
         safety.tolerance = 2
         poll()
 
         settings.$masterMode.dropFirst().sink { [weak self] _ in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.masterModeChanged() } }
+        }.store(in: &cancellables)
+        settings.$masterModeWithoutController.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.masterModeChanged() } }
         }.store(in: &cancellables)
         settings.$naturalCurve.dropFirst().sink { [weak self] _ in
@@ -355,6 +380,8 @@ final class MixerCore: ObservableObject {
     private func microphoneChanged() {
         let mic = microphone.isMuted
         if mic != micMuted { micMuted = mic }
+        let mutable = microphone.isSupported
+        if mutable != micMutable { micMutable = mutable }
     }
 
     private var masterListener: CAPropertyListener?
@@ -525,8 +552,57 @@ final class MixerCore: ObservableObject {
     }
 
     private func fillFromWaiting(_ ch: Int) {
+        // Without a controller the sources below move up first and a waiting source joins at the
+        // end (closeGaps). While the pointer is over the mixer nothing moves, so it takes the gap.
+        if !hardwarePresent && pointerAreas.isEmpty {
+            scheduleCloseGaps()
+            return
+        }
         guard let next = assignment.nextToFill(ch, from: firstSourceChannel) else { return }
         place(next, on: ch)
+    }
+
+    // MARK: - Without a controller
+
+    private func scheduleCloseGaps() {
+        guard !closeGapsScheduled else { return }
+        closeGapsScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                self?.closeGapsScheduled = false
+                self?.closeGaps()
+            }
+        }
+    }
+
+    /// Without a controller there are no gaps: sources below an empty channel move up in order,
+    /// then waiting sources take the channels left free at the end. Not while the pointer is
+    /// over the mixer, nor while channels are held after a restart.
+    private func closeGaps() {
+        guard !hardwarePresent, pointerAreas.isEmpty, assignment.held.isEmpty else { return }
+        let first = firstSourceChannel
+        for ch in assignment.closeGaps(from: first) { faders[ch].attached = false }
+        while let ch = firstFreeChannel(), let next = assignment.nextToFill(ch, from: first) {
+            place(next, on: ch)
+        }
+    }
+
+    /// The mixer window and the menu-bar panel report the pointer; channels close up once it has left both.
+    func pointer(inside: Bool, area: String) {
+        if inside {
+            pointerAreas.insert(area)
+        } else if pointerAreas.remove(area) != nil, pointerAreas.isEmpty, !hardwarePresent {
+            scheduleCloseGaps()
+        }
+    }
+
+    /// A controller counts as present (true at once on connect; false after the grace period).
+    func setHardwarePresent(_ present: Bool) {
+        guard present != hardwarePresent else { return }
+        hardwarePresent = present
+        masterModeChanged()
+        if !present { scheduleCloseGaps() }
+        onStatusChange?()
     }
 
     // MARK: - Channel layout across restarts
@@ -554,6 +630,7 @@ final class MixerCore: ObservableObject {
         guard !assignment.held.isEmpty else { return }
         assignment.endHolding()
         for ch in firstSourceChannel..<Self.channelCount where channels[ch] == nil { fillFromWaiting(ch) }
+        if !hardwarePresent { scheduleCloseGaps() }
         saveLayout()
     }
 
@@ -584,10 +661,13 @@ final class MixerCore: ObservableObject {
         place(id, on: ch)
     }
 
-    /// Drag and drop: move a source onto a channel, swapping with an occupant.
-    func move(_ id: String, to ch: Int) {
-        guard ch >= firstSourceChannel, ch < MixerCore.channelCount, let s = sources[id], !s.permissionNeeded,
+    /// Drag and drop: move a source onto a channel, swapping with an occupant. Without a
+    /// controller, a free channel means the end of the list: right after the last occupied one.
+    func move(_ id: String, to target: Int) {
+        guard target >= firstSourceChannel, target < MixerCore.channelCount, let s = sources[id], !s.permissionNeeded,
               !listMuted.contains(id) else { return }
+        var ch = target
+        if !hardwarePresent && channels[ch] == nil, let end = firstFreeChannel(includingHeld: true) { ch = end }
         let occupant = channels[ch]
         if occupant == id { return }
         if let from = channel(of: id) {
@@ -810,6 +890,16 @@ final class MixerCore: ObservableObject {
         controllerConnected = connected
         detachAllFaders()
         for i in 0..<MixerCore.channelCount { faders[i].position = nil }
+        graceGeneration += 1
+        if connected {
+            setHardwarePresent(true)
+        } else if hardwarePresent {
+            let generation = graceGeneration
+            after(controllerGrace) { [weak self] in
+                guard let self, self.graceGeneration == generation, !self.controllerConnected else { return }
+                self.setHardwarePresent(false)
+            }
+        }
     }
 
     func handle(_ action: ControllerAction) {
@@ -942,23 +1032,86 @@ final class MixerCore: ObservableObject {
         }
     }
 
-    /// Play acts on release, so a 3-second hold can reload the tab instead.
+    /// What holding play does: reload the tab, or on Spotify add the song to Liked Songs.
+    enum HoldAction: Equatable {
+        case reloadTab, likeSong
+
+        var hint: String {
+            switch self {
+            case .reloadTab: return "Keep holding to reload the tab"
+            case .likeSong: return "Keep holding to add to Liked Songs"
+            }
+        }
+    }
+
+    /// How long play is held for its hold action, on every controller.
+    static let playHoldSeconds: TimeInterval = 2
+
+    /// A tab that lost its connection (play blinking amber) always reloads, so the controller can fix it.
+    static func holdAction(for s: Source, spotifyHold: SpotifyHold) -> HoldAction {
+        s.isSpotify && spotifyHold == .likeSong && !s.needsReload ? .likeSong : .reloadTab
+    }
+
+    /// Play acts on release, so a 2-second hold can do something else instead.
     private func topButton(_ ch: Int, pressed: Bool) {
         if pressed {
             playHold.reset(ch)
-            guard source(onChannel: ch)?.kind == .tab else { return }
-            playHold.press(ch, holdAfter: 3, hintAfter: 1, hint: { [weak self] in
+            guard let held = source(onChannel: ch), held.kind == .tab else { return }
+            let action = Self.holdAction(for: held, spotifyHold: settings.spotifyHold)
+            playHold.press(ch, holdAfter: Self.playHoldSeconds, hintAfter: 1, hint: { [weak self] in
                 guard let self, let s = self.source(onChannel: ch) else { return }
-                self.osd("\(ch + 1)", title: s.displayName, value: "Keep holding to reload the tab", source: s)
+                self.osd("\(ch + 1)", title: s.displayName, value: action.hint, source: s)
             }, onHold: { [weak self] in
                 guard let self, let s = self.source(onChannel: ch) else { return false }
-                self.reloadTab(s.id)
+                switch action {
+                case .reloadTab: self.reloadTab(s.id)
+                case .likeSong: self.likeSong(s.id)
+                }
                 return true
             })
         } else {
             guard playHold.release(ch) else { return }
             topPressed(ch)
         }
+    }
+
+    /// Asks Spotify's page to add the playing song to Liked Songs. The pop-up says what happened;
+    /// no answer within 2 s counts as not possible, so it never fails silently.
+    func likeSong(_ id: String) {
+        guard let s = sources[id], let tabId = s.tabId, let conn = s.browserConnection else { return }
+        likeGeneration += 1
+        let generation = likeGeneration
+        pendingLikes[id] = generation
+        chrome.like(conn, tabId: tabId)
+        after(2) { [weak self] in
+            guard let self, self.pendingLikes[id] == generation else { return }
+            self.pendingLikes[id] = nil
+            self.showLikeResult(id, "unavailable")
+        }
+    }
+
+    private var pendingLikes: [String: Int] = [:]
+    private var likeGeneration = 0
+
+    private func commandResult(_ connection: BrowserConnection, tabId: Int, action: String, result: String) {
+        guard action == "like",
+              let s = sources.values.first(where: { $0.tabId == tabId && $0.browserConnection == connection.id }),
+              pendingLikes[s.id] != nil else { return }
+        pendingLikes[s.id] = nil
+        showLikeResult(s.id, result)
+    }
+
+    static func likeMessage(_ result: String) -> String {
+        switch result {
+        case "added": return "Added to Liked Songs"
+        case "already": return "Already in Liked Songs"
+        default: return "Can't add this to Liked Songs"
+        }
+    }
+
+    private func showLikeResult(_ id: String, _ result: String) {
+        guard let s = sources[id] else { return }
+        osd(channel(of: id).map { "\($0 + 1)" } ?? "–", title: s.displayName, value: Self.likeMessage(result), source: s)
     }
 
     /// Reloads a tab, e.g. one that lost its connection to the extension after an update.
@@ -1042,7 +1195,11 @@ final class MixerCore: ObservableObject {
     }
 
     private func masterModeChanged() {
-        if masterActive, let id = channels[0] {
+        if masterActive, channels[0] != nil, !hardwarePresent {
+            // Without a controller every source moves down one to make room; the last may have to wait.
+            if assignment.held.isEmpty { assignment.closeGaps(from: 0) }
+            if let pushedOff = assignment.shiftDown(from: 0) { assignment.addWaiting(pushedOff, first: true) }
+        } else if masterActive, let id = channels[0] {
             assignment.clear(0)
             if let ch = firstFreeChannel() { place(id, on: ch) } else { assignment.addWaiting(id, first: true) }
         } else if !masterActive {

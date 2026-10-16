@@ -46,6 +46,8 @@ struct BrowserConnection: Equatable {
 final class ChromeProvider {
     var onTabs: ((_ connection: BrowserConnection, _ tabs: [TabReport]) -> Void)?
     var onConnectionsChange: ((_ connections: [BrowserConnection]) -> Void)?
+    /// A page's answer to a command that has one ("like": "added", "already" or "unavailable").
+    var onCommandResult: ((_ connection: BrowserConnection, _ tabId: Int, _ action: String, _ result: String) -> Void)?
 
     private let bridge = ChromeBridgeServer()
     private(set) var connections: [Int32: BrowserConnection] = [:]
@@ -73,6 +75,9 @@ final class ChromeProvider {
     }
 
     func togglePlay(_ connection: Int32, tabId: Int) { bridge.send(to: connection, ["type": "togglePlay", "tabId": tabId]) }
+
+    /// Presses the site's own Add to Liked Songs button (Spotify); the page answers with a command result.
+    func like(_ connection: Int32, tabId: Int) { bridge.send(to: connection, ["type": "like", "tabId": tabId]) }
 
     func reloadTab(_ connection: Int32, tabId: Int) { bridge.send(to: connection, ["type": "reloadTab", "tabId": tabId]) }
 
@@ -123,6 +128,9 @@ final class ChromeProvider {
                 onConnectionsChange?(Array(connections.values))
             }
             onTabs?(connection, tabs.compactMap(Self.parse))
+        } else if type == "cmdResult", let tabId = (message["tabId"] as? NSNumber)?.intValue,
+                  let action = message["action"] as? String, let result = message["result"] as? String {
+            onCommandResult?(connection, tabId, action, result)
         }
     }
 

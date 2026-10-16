@@ -1,6 +1,8 @@
 import SwiftUI
 
-/// Menu-bar dropdown: one row per channel, then the unassigned list and app actions.
+/// Menu-bar dropdown: the Media and Microphone buttons, the channels, then the unassigned list and app actions.
+/// With a controller it lists all 8 channels as the faders sit; without one, only occupied channels,
+/// each with a volume slider.
 struct PanelView: View {
     @ObservedObject var core: MixerCore
     let openMixer: () -> Void
@@ -13,16 +15,8 @@ struct PanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10 * scale) {
             HStack(spacing: 6 * scale) {
-                Circle().fill(core.controllerConnected ? Color.green : Color.red).frame(width: 7 * scale, height: 7 * scale)
-                Text(core.controllerConnected ? "Controller connected" : "Controller not connected")
-                    .scaledFont(AppText.caption).foregroundStyle(core.controllerConnected ? Color.secondary : Color.errorText)
+                MuteToggles(core: core)
                 Spacer()
-                if core.muteAll {
-                    Label("Media muted", systemImage: "speaker.slash.fill").scaledFont(AppText.status, weight: .medium).foregroundStyle(Color.errorText)
-                }
-                if core.micMuted {
-                    Label("Mic muted", systemImage: "mic.slash.fill").scaledFont(AppText.status, weight: .medium).foregroundStyle(Color.errorText)
-                }
             }
 
             if core.wrongExtensionFolder && core.browserConnected {
@@ -36,10 +30,14 @@ struct PanelView: View {
                 .foregroundStyle(Color.warningText)
             }
 
-            VStack(spacing: 2) {
-                ForEach(0..<MixerCore.channelCount, id: \.self) { i in
-                    PanelRow(core: core, index: i)
+            if core.hardwarePresent {
+                VStack(spacing: 2) {
+                    ForEach(0..<MixerCore.channelCount, id: \.self) { i in
+                        PanelRow(core: core, index: i, withSlider: false)
+                    }
                 }
+            } else {
+                PanelChannelList(core: core)
             }
 
             Divider()
@@ -58,20 +56,93 @@ struct PanelView: View {
         }
         .padding(12 * scale)
         .frame(width: 400 * scale)
+        .onHover { core.pointer(inside: $0, area: "panel") }
+        .onDisappear { core.pointer(inside: false, area: "panel") }
+    }
+}
+
+/// Without a controller: only occupied channels, in order, each with a slider. Dropping below the
+/// last row puts a source at the end.
+private struct PanelChannelList: View {
+    @ObservedObject var core: MixerCore
+    @Environment(\.uiScale) private var scale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var dropTargeted = false
+
+    private struct Row: Identifiable {
+        let id: String
+        let index: Int
+    }
+
+    private var rows: [Row] {
+        (0..<MixerCore.channelCount).compactMap { ch in
+            if core.masterActive && ch == 0 { return Row(id: "master", index: 0) }
+            return core.channels[ch].map { Row(id: $0, index: ch) }
+        }
+    }
+
+    private var freeChannel: Int? {
+        (core.firstSourceChannel..<MixerCore.channelCount).first { core.channels[$0] == nil }
+    }
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ForEach(rows) { row in
+                PanelRow(core: core, index: row.index, withSlider: true)
+            }
+            if !rows.contains(where: { $0.id != "master" }) && !dropTargeted {
+                Text("Nothing playing")
+                    .scaledFont(12)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, minHeight: 26 * scale)
+            }
+            if dropTargeted && freeChannel != nil {
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                    .frame(height: 26 * scale)
+                    .overlay(Text("Add to the end").scaledFont(12).foregroundStyle(.secondary))
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.bottom, 6 * scale)
+        .contentShape(Rectangle())
+        .dropDestination(for: String.self) { items, _ in
+            guard let id = items.first, let ch = freeChannel else { return false }
+            core.move(id, to: ch)
+            return true
+        } isTargeted: { dropTargeted = $0 }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: core.channels)
     }
 }
 
 private struct PanelRow: View {
     @ObservedObject var core: MixerCore
     let index: Int
+    /// Two lines with a volume slider (without a controller), or one line with a percentage.
+    let withSlider: Bool
     @State private var hovering = false
     @State private var isTargeted = false
     @Environment(\.uiScale) private var scale
 
     private var isMaster: Bool { core.masterActive && index == 0 }
+    private var source: Source? { core.source(onChannel: index) }
 
     var body: some View {
-        draggableRow
+        content
+            .padding(.horizontal, 6 * scale)
+            .padding(.vertical, withSlider ? 4 * scale : 0)
+            .frame(minHeight: 26 * scale)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isTargeted ? Color.accentColor.opacity(0.15)
+                          : hovering && source != nil ? Color.secondary.opacity(0.1) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(Color.accentColor, lineWidth: isTargeted ? 2 : 0)
+            )
+            .onHover { hovering = $0 }
+            .modifier(ChannelRowMenu(core: core, index: index, source: isMaster ? nil : source))
             .dropDestination(for: String.self) { items, _ in
                 guard !isMaster, let id = items.first else { return false }
                 core.move(id, to: index)
@@ -79,25 +150,34 @@ private struct PanelRow: View {
             } isTargeted: { isTargeted = $0 }
     }
 
-    /// Like the window's strips: the whole row can be dragged onto another channel (its buttons keep
-    /// their own behaviour), and right-click opens the same menu.
     @ViewBuilder
-    private var draggableRow: some View {
-        if let s = core.source(onChannel: index), !isMaster {
-            row
-                .contentShape(RoundedRectangle(cornerRadius: 6))
+    private var content: some View {
+        if withSlider {
+            VStack(alignment: .leading, spacing: 2 * scale) {
+                draggable(topLine)
+                sliderLine
+            }
+        } else {
+            draggable(topLine)
+        }
+    }
+
+    /// Like the window's strips: a row can be dragged onto another channel. Its buttons keep their
+    /// own behaviour, and the slider isn't part of the drag.
+    @ViewBuilder
+    private func draggable<V: View>(_ v: V) -> some View {
+        if let s = source, !isMaster {
+            v.contentShape(Rectangle())
                 .draggable(s.id) { ChannelMenu.dragPreview(s, channel: index, scale: scale) }
-                .contextMenu { ChannelMenu.items(core: core, index: index, source: s) }
                 .accessibilityHint(ChannelMenu.dragHint)
         } else {
-            row
+            v
         }
     }
 
     @ViewBuilder
-    private var row: some View {
+    private var topLine: some View {
         let status = core.status(ofChannel: index)
-        let source = core.source(onChannel: index)
         HStack(spacing: 8 * scale) {
             Text("\(index + 1)")
                 .scaledFont(12, weight: .semibold, design: .rounded, monospacedDigit: true)
@@ -105,11 +185,10 @@ private struct PanelRow: View {
                 .frame(width: 14 * scale)
             Circle().fill(status.color).frame(width: 8 * scale, height: 8 * scale)
 
-            if status == .master {
+            if isMaster {
                 Text("Master").scaledFont(12, weight: .medium)
                 Spacer()
-                Text("\(Int((core.masterVolume * 100).rounded()))%")
-                    .scaledFont(12, monospacedDigit: true).foregroundStyle(.secondary)
+                if !withSlider { percent(core.masterVolume) }
             } else if let s = source {
                 Text(s.displayName)
                     .scaledFont(12, weight: .medium)
@@ -134,27 +213,77 @@ private struct PanelRow: View {
                         .foregroundStyle(status == .muted ? Color.errorText : Color.primary)
                 }
                 .buttonStyle(.borderless)
-                Text("\(Int((core.position(of: s) * 100).rounded()))%")
-                    .scaledFont(12, monospacedDigit: true)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 38 * scale, alignment: .trailing)
+                if !withSlider { percent(core.position(of: s)) }
             } else {
                 Text("Free").scaledFont(12).foregroundStyle(.tertiary)
                 Spacer()
             }
         }
         .scaledFont(11)
-        .padding(.horizontal, 6 * scale)
-        .frame(height: 26 * scale)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isTargeted ? Color.accentColor.opacity(0.15)
-                      : hovering && source != nil ? Color.secondary.opacity(0.1) : Color.clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Color.accentColor, lineWidth: isTargeted ? 2 : 0)
-        )
-        .onHover { hovering = $0 }
+        .frame(height: 22 * scale)
+    }
+
+    @ViewBuilder
+    private var sliderLine: some View {
+        if isMaster {
+            VolumeSlider(name: "Master", channel: index + 1, value: core.masterVolume) { core.setMasterFromUI($0) }
+        } else if let s = source {
+            VolumeSlider(name: s.name, channel: index + 1, value: core.position(of: s)) { core.setVolumeFromUI(s.id, position: $0) }
+        }
+    }
+
+    private func percent(_ value: Float) -> some View {
+        Text("\(Int((value * 100).rounded()))%")
+            .scaledFont(12, monospacedDigit: true)
+            .foregroundStyle(.secondary)
+            .frame(width: 38 * scale, alignment: .trailing)
+    }
+}
+
+/// A channel's volume in the panel: a slider and its percentage, lined up under the name.
+private struct VolumeSlider: View {
+    let name: String
+    let channel: Int
+    let value: Float
+    let set: (Float) -> Void
+    @Environment(\.uiScale) private var scale
+
+    var body: some View {
+        let percent = Int((value * 100).rounded())
+        HStack(spacing: 8 * scale) {
+            Slider(value: Binding(get: { Double(value) }, set: { set(Float($0)) }), in: 0...1)
+                .controlSize(.small)
+                .accessibilityLabel("\(name), channel \(channel), volume")
+                .accessibilityValue("\(percent)%")
+                .accessibilityAdjustableAction { direction in
+                    switch direction {
+                    case .increment: set(min(1, value + 0.05))
+                    case .decrement: set(max(0, value - 0.05))
+                    @unknown default: break
+                    }
+                }
+            Text("\(percent)%")
+                .scaledFont(12, monospacedDigit: true)
+                .foregroundStyle(.secondary)
+                .frame(width: 38 * scale, alignment: .trailing)
+                .accessibilityHidden(true)
+        }
+        // Under the name: past the channel number and the status dot.
+        .padding(.leading, (14 + 8 + 8 + 8) * scale)
+    }
+}
+
+/// Right-click on an occupied channel row opens the window's channel menu.
+private struct ChannelRowMenu: ViewModifier {
+    @ObservedObject var core: MixerCore
+    let index: Int
+    let source: Source?
+
+    func body(content: Content) -> some View {
+        if let s = source {
+            content.contextMenu { ChannelMenu.items(core: core, index: index, source: s) }
+        } else {
+            content
+        }
     }
 }

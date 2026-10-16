@@ -42,6 +42,20 @@ struct GroupRule: Codable, Identifiable, Equatable {
     }
 }
 
+/// What holding play for 2 s does on a Spotify channel (everywhere else it reloads the tab).
+enum SpotifyHold: String, CaseIterable, Identifiable {
+    case likeSong, reloadTab
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .likeSong: return "Add to Liked Songs"
+        case .reloadTab: return "Reload the tab"
+        }
+    }
+}
+
 enum ControllerKind: String, CaseIterable, Identifiable {
     case launchControlXL, mackieControl, midiLearn
 
@@ -61,6 +75,11 @@ final class AppSettings: ObservableObject {
     private let defaults: UserDefaults
 
     @Published var masterMode: Bool { didSet { defaults.set(masterMode, forKey: "masterMode") } }
+    /// Channel 1 as master volume while no controller is connected. Kept apart from `masterMode`
+    /// (the controller's fader 1), and on by default.
+    @Published var masterModeWithoutController: Bool {
+        didSet { defaults.set(masterModeWithoutController, forKey: "masterModeWithoutController") }
+    }
     @Published var launchAtLogin: Bool { didSet { defaults.set(launchAtLogin, forKey: "launchAtLogin"); applyLaunchAtLogin() } }
     @Published var showOSD: Bool { didSet { defaults.set(showOSD, forKey: "showOSD") } }
     @Published var rememberVolumes: Bool { didSet { defaults.set(rememberVolumes, forKey: "rememberVolumes") } }
@@ -68,6 +87,8 @@ final class AppSettings: ObservableObject {
     @Published var alwaysInDock: Bool { didSet { defaults.set(alwaysInDock, forKey: "alwaysInDock") } }
     /// Which controller the mixer listens to.
     @Published var controllerKind: ControllerKind { didSet { defaults.set(controllerKind.rawValue, forKey: "controllerKind") } }
+    /// What holding play does on Spotify.
+    @Published var spotifyHold: SpotifyHold { didSet { defaults.set(spotifyHold.rawValue, forKey: "spotifyHold") } }
     /// The MIDI device used with MIDI learn, by its display name.
     @Published var midiDevice: String { didSet { defaults.set(midiDevice, forKey: "midiDevice") } }
     /// MIDI learn assignments, keyed by `LearnTarget.key`.
@@ -115,6 +136,7 @@ final class AppSettings: ObservableObject {
         self.defaults = defaults
         defaults.register(defaults: [
             "masterMode": false,
+            "masterModeWithoutController": true,
             "launchAtLogin": true,
             "showOSD": true,
             "rememberVolumes": true,
@@ -122,6 +144,7 @@ final class AppSettings: ObservableObject {
             "alwaysInDock": false,
         ])
         masterMode = defaults.bool(forKey: "masterMode")
+        masterModeWithoutController = defaults.bool(forKey: "masterModeWithoutController")
         launchAtLogin = defaults.bool(forKey: "launchAtLogin")
         showOSD = defaults.bool(forKey: "showOSD")
         rememberVolumes = defaults.bool(forKey: "rememberVolumes")
@@ -129,6 +152,7 @@ final class AppSettings: ObservableObject {
         alwaysInDock = defaults.bool(forKey: "alwaysInDock")
         textSize = TextSize(rawValue: defaults.integer(forKey: "textSize")) ?? .standard
         controllerKind = ControllerKind(rawValue: defaults.string(forKey: "controllerKind") ?? "") ?? .launchControlXL
+        spotifyHold = SpotifyHold(rawValue: defaults.string(forKey: "spotifyHold") ?? "") ?? .likeSong
         midiDevice = defaults.string(forKey: "midiDevice") ?? ""
         midiBindings = AppSettings.load("midiBindings", defaults) ?? [:]
         groups = AppSettings.load("groups", defaults) ?? AppSettings.defaultGroups

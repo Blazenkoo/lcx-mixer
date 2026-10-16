@@ -1,0 +1,192 @@
+import XCTest
+@testable import LCXMixerKit
+
+/// Without a controller: channels close up when a source leaves, keep their order, wait while the
+/// pointer is over the mixer, and a missing controller only counts after a grace period.
+@MainActor
+final class NoControllerTests: XCTestCase {
+
+    // MARK: The bookkeeping
+
+    func testClosingGapsMovesSourcesUpInOrder() {
+        var a = ChannelAssignment(channels: 8)
+        a.place("a", on: 0); a.place("c", on: 2); a.place("d", on: 5)
+        let changed = a.closeGaps(from: 0)
+        XCTAssertEqual(Array(a.channels.prefix(4)), ["a", "c", "d", nil])
+        XCTAssertEqual(changed, [1, 2, 5])
+    }
+
+    func testClosingGapsLeavesChannelOneAloneInMasterMode() {
+        var a = ChannelAssignment(channels: 8)
+        a.place("b", on: 3)
+        a.closeGaps(from: 1)
+        XCTAssertNil(a.channels[0])
+        XCTAssertEqual(a.channels[1], "b")
+    }
+
+    func testShiftDownMakesRoomAndReturnsWhatFellOff() {
+        var a = ChannelAssignment(channels: 8)
+        for (i, id) in ["1", "2", "3", "4", "5", "6", "7", "8"].enumerated() { a.place(id, on: i) }
+        XCTAssertEqual(a.shiftDown(from: 0), "8")
+        XCTAssertEqual(a.channels, [nil, "1", "2", "3", "4", "5", "6", "7"])
+    }
+
+    // MARK: The mixer
+
+    func testClosedTabsChannelIsTakenByTheOnesBelow() {
+        let m = TestMixer(self, controllerPresent: false)
+        m.report((1...4).map { tab($0) })
+        m.report([1, 3, 4].map { tab($0) })
+        m.wait(0.05)
+        XCTAssertEqual(Array(m.core.channels.prefix(4)), [tabID(1), tabID(3), tabID(4), nil])
+    }
+
+    func testWithAControllerTheGapStays() {
+        let m = TestMixer(self)
+        m.report((1...4).map { tab($0) })
+        m.report([1, 3, 4].map { tab($0) })
+        m.wait(0.05)
+        XCTAssertEqual(Array(m.core.channels.prefix(4)), [tabID(1), nil, tabID(3), tabID(4)])
+    }
+
+    func testAWaitingTabJoinsAtTheEnd() {
+        let m = TestMixer(self, controllerPresent: false)
+        m.report((1...9).map { tab($0) })
+        m.report((1...9).filter { $0 != 3 }.map { tab($0) })
+        m.wait(0.05)
+        XCTAssertEqual(m.core.channels, [1, 2, 4, 5, 6, 7, 8, 9].map { tabID($0) })
+        XCTAssertTrue(m.core.waiting.isEmpty)
+    }
+
+    func testNothingMovesWhileThePointerIsOverTheMixer() {
+        let m = TestMixer(self, controllerPresent: false)
+        m.report((1...3).map { tab($0) })
+        m.core.pointer(inside: true, area: "panel")
+        m.report([1, 3].map { tab($0) })
+        m.wait(0.05)
+        XCTAssertEqual(Array(m.core.channels.prefix(3)), [tabID(1), nil, tabID(3)])
+        m.core.pointer(inside: false, area: "panel")
+        m.wait(0.05)
+        XCTAssertEqual(Array(m.core.channels.prefix(3)), [tabID(1), tabID(3), nil])
+    }
+
+    func testUnassigningClosesTheGap() {
+        let m = TestMixer(self, controllerPresent: false)
+        m.report((1...3).map { tab($0) })
+        m.core.unassign(channel: 0)
+        m.wait(0.05)
+        XCTAssertEqual(Array(m.core.channels.prefix(3)), [tabID(2), tabID(3), nil])
+    }
+
+    func testDroppingOnAFreeChannelPlacesTheSourceAtTheEnd() {
+        let m = TestMixer(self, controllerPresent: false)
+        m.report((1...3).map { tab($0) })
+        m.core.move(tabID(1), to: 6)
+        m.wait(0.05)
+        XCTAssertEqual(Array(m.core.channels.prefix(4)), [tabID(2), tabID(3), tabID(1), nil])
+    }
+
+    func testDroppingOnAnOccupiedChannelStillSwaps() {
+        let m = TestMixer(self, controllerPresent: false)
+        m.report((1...3).map { tab($0) })
+        m.core.move(tabID(1), to: 2)
+        m.wait(0.05)
+        XCTAssertEqual(Array(m.core.channels.prefix(3)), [tabID(3), tabID(2), tabID(1)])
+    }
+
+    func testMissingControllerCountsOnlyAfterTheGracePeriod() {
+        let m = TestMixer(self, controllerPresent: false)
+        m.core.controllerGrace = 0.2
+        m.connectController()
+        XCTAssertTrue(m.core.hardwarePresent)
+        m.report((1...3).map { tab($0) })
+        m.controller.isConnected = false
+        m.controller.onConnectionChange?(false)
+        m.report([1, 3].map { tab($0) })
+        m.wait(0.05)
+        XCTAssertTrue(m.core.hardwarePresent, "a loose cable changes nothing straight away")
+        XCTAssertEqual(Array(m.core.channels.prefix(3)), [tabID(1), nil, tabID(3)])
+        m.wait(0.3)
+        XCTAssertFalse(m.core.hardwarePresent)
+        XCTAssertEqual(Array(m.core.channels.prefix(3)), [tabID(1), tabID(3), nil])
+    }
+
+    func testAControllerBackInTimeKeepsEverything() {
+        let m = TestMixer(self, controllerPresent: false)
+        m.core.controllerGrace = 0.2
+        m.connectController()
+        m.report((1...3).map { tab($0) })
+        m.report([1, 3].map { tab($0) })
+        m.controller.onConnectionChange?(false)
+        m.wait(0.05)
+        m.controller.onConnectionChange?(true)
+        m.wait(0.3)
+        XCTAssertTrue(m.core.hardwarePresent)
+        XCTAssertEqual(Array(m.core.channels.prefix(3)), [tabID(1), nil, tabID(3)])
+    }
+
+    func testPluggingAControllerInKeepsTheOrder() {
+        let m = TestMixer(self, controllerPresent: false)
+        m.report((1...3).map { tab($0) })
+        m.report([1, 3].map { tab($0) })
+        m.wait(0.05)
+        m.connectController()
+        m.report([3].map { tab($0) })
+        m.wait(0.05)
+        XCTAssertEqual(Array(m.core.channels.prefix(2)), [nil, tabID(3)], "with a controller, gaps stay")
+    }
+
+    func testMasterSettingsAreKeptApart() {
+        let m = TestMixer(self)
+        XCTAssertFalse(m.settings.masterMode)
+        XCTAssertTrue(m.settings.masterModeWithoutController)
+    }
+}
+
+/// Holding play: 2 s on every controller; on Spotify it adds the song to Liked Songs unless set
+/// otherwise or the tab needs a reload.
+@MainActor
+final class PlayHoldTests: XCTestCase {
+
+    private func spotify(needsReload: Bool = false) -> Source {
+        let m = TestMixer(self)
+        m.report(tab(1, host: "open.spotify.com", title: "Song - Spotify", needsReload: needsReload))
+        return m.source(1)!
+    }
+
+    func testHoldIsTwoSeconds() {
+        XCTAssertEqual(MixerCore.playHoldSeconds, 2)
+    }
+
+    func testSpotifyHoldAddsToLikedSongs() {
+        XCTAssertEqual(MixerCore.holdAction(for: spotify(), spotifyHold: .likeSong), .likeSong)
+        XCTAssertEqual(MixerCore.HoldAction.likeSong.hint, "Keep holding to add to Liked Songs")
+    }
+
+    func testSpotifyHoldCanStillReload() {
+        XCTAssertEqual(MixerCore.holdAction(for: spotify(), spotifyHold: .reloadTab), .reloadTab)
+    }
+
+    func testATabThatNeedsAReloadAlwaysReloads() {
+        XCTAssertEqual(MixerCore.holdAction(for: spotify(needsReload: true), spotifyHold: .likeSong), .reloadTab)
+    }
+
+    func testOtherSitesReload() {
+        let m = TestMixer(self)
+        m.report(tab(1))
+        XCTAssertEqual(MixerCore.holdAction(for: m.source(1)!, spotifyHold: .likeSong), .reloadTab)
+        XCTAssertEqual(MixerCore.HoldAction.reloadTab.hint, "Keep holding to reload the tab")
+    }
+
+    func testLikeMessages() {
+        XCTAssertEqual(MixerCore.likeMessage("added"), "Added to Liked Songs")
+        XCTAssertEqual(MixerCore.likeMessage("already"), "Already in Liked Songs")
+        XCTAssertEqual(MixerCore.likeMessage("unavailable"), "Can't add this to Liked Songs")
+        XCTAssertEqual(MixerCore.likeMessage("something new"), "Can't add this to Liked Songs")
+    }
+
+    func testLikedSongsIsTheDefault() {
+        let m = TestMixer(self)
+        XCTAssertEqual(m.settings.spotifyHold, .likeSong)
+    }
+}

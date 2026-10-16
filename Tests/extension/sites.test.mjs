@@ -159,3 +159,57 @@ test('Twitch recordings can change speed and seek', () => {
   assert.equal(s.canSeek, true);
   assert.deepEqual(page.errors(), []);
 });
+
+// Holding play on a Spotify channel: the page presses Spotify's own Add to Liked Songs button.
+function spotifyNowPlaying({ link = '/album/abc?highlight=spotify:track:xyz', button = makeButton({ 'aria-checked': 'false' }) } = {}) {
+  const widget = {
+    querySelector(q) {
+      if (q.startsWith('a[href') && link) {
+        const wanted = ['/track/', '/album/', 'spotify:track:'];
+        return wanted.some((w) => link.includes(w)) ? { href: link } : null;
+      }
+      if (q === 'button[data-testid="add-button"]') return button;
+      return null;
+    },
+  };
+  const page = makePage({ host: 'open.spotify.com', elements: { '[data-testid="now-playing-widget"]': widget } });
+  const results = page.results('A');
+  page.load('A');
+  return { page, results, button };
+}
+
+test('Spotify: holding play adds the song to Liked Songs', () => {
+  const { page, results, button } = spotifyNowPlaying();
+  page.command('A', { action: 'like' });
+  assert.equal(button.clicks, 1);
+  assert.deepEqual(results, [{ action: 'like', result: 'added' }]);
+  assert.deepEqual(page.errors(), []);
+});
+
+test('Spotify: a liked song stays liked', () => {
+  const { page, results, button } = spotifyNowPlaying({ button: makeButton({ 'aria-checked': 'true' }) });
+  page.command('A', { action: 'like' });
+  assert.equal(button.clicks, 0, 'never pressed: that would open a playlist menu, or unlike');
+  assert.deepEqual(results, [{ action: 'like', result: 'already' }]);
+});
+
+test('Spotify: an episode or an ad has nothing to like', () => {
+  const { page, results, button } = spotifyNowPlaying({ link: '/episode/123' });
+  page.command('A', { action: 'like' });
+  assert.equal(button.clicks, 0);
+  assert.deepEqual(results, [{ action: 'like', result: 'unavailable' }]);
+});
+
+test('Spotify: a changed player answers that it can\'t', () => {
+  const { page, results } = spotifyNowPlaying({ button: null });
+  page.command('A', { action: 'like' });
+  assert.deepEqual(results, [{ action: 'like', result: 'unavailable' }]);
+});
+
+test('other sites answer that they can\'t like', () => {
+  const page = makePage();
+  const results = page.results('A');
+  page.load('A');
+  page.command('A', { action: 'like' });
+  assert.deepEqual(results, [{ action: 'like', result: 'unavailable' }]);
+});
