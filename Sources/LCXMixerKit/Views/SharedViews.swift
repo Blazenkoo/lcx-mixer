@@ -1,3 +1,5 @@
+import AppKit
+import CoreAudio
 import SwiftUI
 
 extension ChannelStatus {
@@ -125,7 +127,23 @@ struct HeaderStatus: View {
             }
             .foregroundStyle(Color.secondary)
 
-            MuteToggles(core: core)
+            HeaderDivider()
+            HStack(spacing: 6 * scale) {
+                Text("Output").foregroundStyle(.secondary).accessibilityHidden(true)
+                DevicePicker(title: "Output", devices: core.outputDevices, selected: core.outputDeviceID) { core.selectOutput($0) }
+                MediaMuteButton(core: core)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Output")
+
+            HeaderDivider()
+            HStack(spacing: 6 * scale) {
+                Text("Input").foregroundStyle(.secondary).accessibilityHidden(true)
+                DevicePicker(title: "Input", devices: core.inputDevices, selected: core.inputDeviceID) { core.selectInput($0) }
+                MicMuteButton(core: core)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Input")
             if core.chromeProblem {
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([AppPaths.extensionFolder])
@@ -161,24 +179,130 @@ struct HeaderStatus: View {
     }
 }
 
-/// Media and Microphone: mute all media or the microphone from the screen, in step with the
-/// controller's Mute and Solo. Each is an icon with its label, solid red while muted.
+/// The menu-bar panel's top line: "Mute:", then Media and Microphone (no device pickers there).
 struct MuteToggles: View {
+    @ObservedObject var core: MixerCore
+    @Environment(\.uiScale) private var scale
+
+    var body: some View {
+        HStack(spacing: 6 * scale) {
+            Text("Mute:").scaledFont(AppText.status).foregroundStyle(.secondary).accessibilityHidden(true)
+            MediaMuteButton(core: core)
+            MicMuteButton(core: core)
+        }
+    }
+}
+
+/// Media: mutes all media playback (what you hear), like the controller's side Mute button.
+/// Solid red while on.
+struct MediaMuteButton: View {
     @ObservedObject var core: MixerCore
 
     var body: some View {
-        HStack(spacing: 6) {
-            MuteButton(title: "Media", symbol: "speaker.wave.2.fill", mutedSymbol: "speaker.slash.fill",
-                       isOn: core.muteAll, enabled: true,
-                       help: core.muteAll ? "All media is muted" : "Mute all media",
-                       accessibilityName: "Mute all media") { core.toggleMuteAll() }
-            // Dimmed rather than hidden, so the row doesn't shift when you switch microphones.
-            MuteButton(title: "Microphone", symbol: "mic.fill", mutedSymbol: "mic.slash.fill",
-                       isOn: core.micMuted, enabled: core.micMutable,
-                       help: core.micMutable ? (core.micMuted ? "The microphone is muted" : "Mute the microphone") : "Can't be muted by apps",
-                       accessibilityName: "Mute the microphone") { core.toggleMicrophone() }
-        }
+        MuteButton(title: "Media", symbol: "speaker.wave.2.fill", mutedSymbol: "speaker.slash.fill",
+                   isOn: core.muteAll, enabled: true,
+                   help: core.muteAll ? "All media is muted" : "Mute all media",
+                   accessibilityName: "Mute all media") { core.toggleMuteAll() }
     }
+}
+
+/// Microphone: mutes the selected input (what others hear), like Solo. Dimmed rather than hidden
+/// when that input can't be muted by apps, so the row doesn't shift when you switch microphones.
+struct MicMuteButton: View {
+    @ObservedObject var core: MixerCore
+
+    var body: some View {
+        MuteButton(title: "Microphone", symbol: "mic.fill", mutedSymbol: "mic.slash.fill",
+                   isOn: core.micMuted, enabled: core.micMutable,
+                   help: core.micMutable ? (core.micMuted ? "The microphone is muted" : "Mute the microphone") : "Can't be muted by apps",
+                   accessibilityName: "Mute the microphone") { core.toggleMicrophone() }
+    }
+}
+
+/// A thin vertical line between the header's groups.
+struct HeaderDivider: View {
+    @Environment(\.uiScale) private var scale
+
+    var body: some View {
+        Rectangle().fill(Color.secondary.opacity(0.35)).frame(width: 1, height: 18 * scale).accessibilityHidden(true)
+    }
+}
+
+/// The header's Output or Input picker. macOS draws pop-up menus lower than the app's buttons, so
+/// the button is drawn like them (with a chevron), and opens the standard macOS menu with the
+/// current device ticked.
+struct DevicePicker: View {
+    let title: String
+    let devices: [AudioDeviceChoice]
+    let selected: AudioObjectID
+    let choose: (AudioObjectID) -> Void
+    @State private var anchor = MenuAnchor()
+    @Environment(\.uiScale) private var scale
+
+    private var name: String { devices.first { $0.id == selected }?.name ?? "None" }
+
+    var body: some View {
+        Button { anchor.show(devices: devices, selected: selected, choose: choose) } label: {
+            HStack(spacing: 5 * scale) {
+                Text(name).lineLimit(1).truncationMode(.tail)
+                Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(.secondary)
+            }
+            .scaledFont(AppText.status, weight: .medium)
+            .frame(height: 22 * scale)
+            // As wide as the device's name, up to a cap; longer names are cut short with "…".
+            .frame(maxWidth: 220 * scale)
+            .fixedSize(horizontal: true, vertical: false)
+        }
+        .buttonStyle(AppButtonStyle())
+        .background(MenuAnchorView(anchor: anchor))
+        .disabled(devices.isEmpty)
+        .help(name)
+        .accessibilityLabel(title)
+        .accessibilityValue(name)
+        .accessibilityHint("Opens a menu to choose the \(title.lowercased()) device")
+    }
+}
+
+/// Holds the picker's view so the menu can open right below it.
+@MainActor
+final class MenuAnchor {
+    weak var view: NSView?
+    private var target: MenuTarget?
+
+    func show(devices: [AudioDeviceChoice], selected: AudioObjectID, choose: @escaping (AudioObjectID) -> Void) {
+        guard let view else { return }
+        let menu = NSMenu()
+        let target = MenuTarget(choose: choose)
+        for d in devices {
+            let item = NSMenuItem(title: d.name, action: #selector(MenuTarget.pick(_:)), keyEquivalent: "")
+            item.target = target
+            item.tag = Int(d.id)
+            item.state = d.id == selected ? .on : .off
+            menu.addItem(item)
+        }
+        self.target = target
+        menu.minimumWidth = view.bounds.width
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.isFlipped ? view.bounds.maxY + 4 : -4), in: view)
+    }
+}
+
+@MainActor
+private final class MenuTarget: NSObject {
+    let choose: (AudioObjectID) -> Void
+    init(choose: @escaping (AudioObjectID) -> Void) { self.choose = choose }
+    @objc func pick(_ sender: NSMenuItem) { choose(AudioObjectID(sender.tag)) }
+}
+
+private struct MenuAnchorView: NSViewRepresentable {
+    let anchor: MenuAnchor
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        anchor.view = view
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) { anchor.view = view }
 }
 
 /// A button that turns solid red while its mute is on; VoiceOver reads it as a toggle.

@@ -1,6 +1,7 @@
 import AudioToolbox
 import CoreAudio
 import Foundation
+import os
 
 /// Small wrappers around the CoreAudio property API.
 enum CA {
@@ -94,6 +95,64 @@ enum CA {
         var addr = address(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, kAudioDevicePropertyScopeOutput)
         var value = Float32(max(0, min(1, volume)))
         AudioObjectSetPropertyData(device, &addr, 0, nil, UInt32(MemoryLayout<Float32>.size), &value)
+    }
+}
+
+// MARK: - Device lists (the header's Output and Input pickers)
+
+/// A device as the Output and Input pickers list it.
+struct AudioDeviceChoice: Identifiable, Equatable {
+    let id: AudioObjectID
+    let name: String
+}
+
+/// What the pickers need to know about one Core Audio device.
+struct RawAudioDevice {
+    let id: AudioObjectID
+    let uid: String
+    let name: String
+    let hidden: Bool
+    let inputStreams: Int
+    let outputStreams: Int
+}
+
+extension CA {
+    /// Output or input devices as Sound settings shows them, by name. Leaves out hidden devices
+    /// and the private devices this app makes for its own audio taps.
+    static func deviceChoices(input: Bool) -> [AudioDeviceChoice] {
+        visibleDevices(objectIDs(system, kAudioHardwarePropertyDevices).map(rawDevice), input: input)
+    }
+
+    static func visibleDevices(_ raw: [RawAudioDevice], input: Bool) -> [AudioDeviceChoice] {
+        raw.filter { (input ? $0.inputStreams : $0.outputStreams) > 0 && !$0.hidden && !$0.uid.hasPrefix("lcxmixer-") }
+            .map { AudioDeviceChoice(id: $0.id, name: $0.name) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private static func rawDevice(_ d: AudioObjectID) -> RawAudioDevice {
+        RawAudioDevice(id: d, uid: deviceUID(d) ?? "", name: deviceName(d),
+                       hidden: get(d, kAudioDevicePropertyIsHidden, default: UInt32(0)) != 0,
+                       inputStreams: streamCount(d, scope: kAudioObjectPropertyScopeInput),
+                       outputStreams: streamCount(d, scope: kAudioObjectPropertyScopeOutput))
+    }
+
+    private static func streamCount(_ d: AudioObjectID, scope: AudioObjectPropertyScope) -> Int {
+        var addr = address(kAudioDevicePropertyStreams, scope)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(d, &addr, 0, nil, &size) == noErr else { return 0 }
+        return Int(size) / MemoryLayout<AudioStreamID>.size
+    }
+
+    static func defaultInputDevice() -> AudioObjectID {
+        get(system, kAudioHardwarePropertyDefaultInputDevice, default: AudioObjectID(kAudioObjectUnknown))
+    }
+
+    /// Switches the Mac's output or input, the same as choosing it in Sound settings.
+    static func setDefaultDevice(_ d: AudioObjectID, input: Bool) {
+        var addr = address(input ? kAudioHardwarePropertyDefaultInputDevice : kAudioHardwarePropertyDefaultOutputDevice)
+        var value = d
+        let status = AudioObjectSetPropertyData(system, &addr, 0, nil, UInt32(MemoryLayout<AudioObjectID>.size), &value)
+        if status != noErr { Log.audio.error("Could not switch the default \(input ? "input" : "output", privacy: .public) device: \(status)") }
     }
 }
 

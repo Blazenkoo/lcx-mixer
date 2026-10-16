@@ -51,6 +51,12 @@ final class MixerCore: ObservableObject {
     private var graceGeneration = 0
     /// Whether the current microphone can be muted by apps (the Microphone button is dimmed if not).
     @Published private(set) var micMutable = true
+    /// The header's Output and Input pickers: the Mac's devices and the current one of each.
+    @Published private(set) var outputDevices: [AudioDeviceChoice] = []
+    @Published private(set) var inputDevices: [AudioDeviceChoice] = []
+    @Published private(set) var outputDeviceID = AudioObjectID(kAudioObjectUnknown)
+    @Published private(set) var inputDeviceID = AudioObjectID(kAudioObjectUnknown)
+    private var deviceListListener: CAPropertyListener?
     /// Areas the pointer is over (the mixer window, the panel). Without a controller, channels
     /// don't close up while it's inside one, so you never click a row that just slid up.
     private var pointerAreas = Set<String>()
@@ -207,6 +213,9 @@ final class MixerCore: ObservableObject {
         microphone.onChange = { [weak self] in self?.microphoneChanged() }
         microphone.startListening()
         microphoneChanged()
+        deviceListListener = CAPropertyListener(CA.system, kAudioHardwarePropertyDevices) { [weak self] in
+            self?.devicesChanged()
+        }
         listenToMasterVolume()
         let safety = mainTimer(every: 10) { [weak self] in self?.poll() }
         safety.tolerance = 2
@@ -382,7 +391,25 @@ final class MixerCore: ObservableObject {
         if mic != micMuted { micMuted = mic }
         let mutable = microphone.isSupported
         if mutable != micMutable { micMutable = mutable }
+        devicesChanged()
     }
+
+    /// Refreshes the pickers. Runs on Core Audio's notifications (devices added or removed, the
+    /// default output or input switched), never on a timer, and publishes only what changed.
+    private func devicesChanged() {
+        let outputs = CA.deviceChoices(input: false)
+        let inputs = CA.deviceChoices(input: true)
+        if outputs != outputDevices { outputDevices = outputs }
+        if inputs != inputDevices { inputDevices = inputs }
+        if engine.outputDevice != outputDeviceID { outputDeviceID = engine.outputDevice }
+        let input = microphone.device
+        if input != inputDeviceID { inputDeviceID = input }
+    }
+
+    /// From the header's pickers: switch the Mac's output or input, as Sound settings would.
+    /// The rest follows from Core Audio's notifications (master mode, the taps, the microphone).
+    func selectOutput(_ id: AudioObjectID) { CA.setDefaultDevice(id, input: false) }
+    func selectInput(_ id: AudioObjectID) { CA.setDefaultDevice(id, input: true) }
 
     private var masterListener: CAPropertyListener?
 
@@ -1186,6 +1213,7 @@ final class MixerCore: ObservableObject {
     // MARK: - Output device and master mode
 
     private func outputChanged() {
+        devicesChanged()
         listenToMasterVolume()
         outputName = engine.outputName
         masterSupported = engine.masterSupported

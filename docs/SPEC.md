@@ -249,8 +249,9 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 
 **Header and footer**
 
-- **Header:** "Launch Control XL connected" (the controller's name), or "Audio mixer active" without one; the **Media** and **Microphone** buttons; and the current output device.
-- **Media and Microphone buttons** (in the header and the panel's top line): mute all media and the microphone, like the controller's Mute and Solo and in step with them. Each is an icon with its label, solid red while on, read by VoiceOver as an on/off toggle. Microphone is dimmed, with "Can't be muted by apps", when the current input can't be muted.
+- **Header, one row:** "Launch Control XL connected" (the controller's name), or "Audio mixer active" without one │ **Output**, the output picker and the **Media** button │ **Input**, the input picker and the **Microphone** button │ the Settings button on the right. Thin dividers separate the three groups.
+- **Output and Input pickers:** list the Mac's output or input devices as Sound settings does (hidden devices and the app's own tap devices left out), by name, with the current one ticked. Choosing one switches the Mac's output or input for everything, the same as Sound settings. Changes made elsewhere (Control Centre, AirPods, unplugging an interface) show within a second; master mode and the Microphone button follow. Each picker is as wide as its device's name, up to 220 pt, then cut short with "…" (full name on hover and for VoiceOver). macOS draws pop-up menus lower than the app's buttons, so the picker's button is drawn like them, with a chevron, and opens the standard macOS menu.
+- **Media and Microphone buttons** (in the header's Output and Input groups, and the panel's top line): mute all media and the selected microphone, like the controller's Mute and Solo and in step with them. Each is an icon with its label, solid red while on, read by VoiceOver as an on/off toggle. Microphone is dimmed, with "Can't be muted by apps", when the current input can't be muted.
 - **Below the strips:** the Unassigned and Muted tabs (see above), with the same space above the strips as below them.
 - **Settings** opens from the Settings button in the header, a bordered button like the strips' own, or with ⌘,.
 
@@ -260,7 +261,7 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 
 **Panel (left or right click):** the same information as the window, as vertically stacked rows, one per channel, without app icons to keep it compact.
 
-- **Top line:** the Media and Microphone buttons, as in the window header.
+- **Top line:** "Mute:", then the Media and Microphone buttons, as in the window header (no device pickers in the panel), with a separator between them and the channels.
 - **Channel rows with a controller:** all 8, as the faders sit: channel number · source name with media title ("YouTube – video title") · status dot · status glyph · volume percentage. Empty channels show "Free" in a quiet style.
 - **Channel rows without a controller:** only occupied channels (and Master), each on two lines: the same top line, then a volume slider and its percentage, lined up under the name. "Nothing playing" when there are none. The panel grows and shrinks with the list.
 - **Row actions:** clicking a row's mute or play glyph toggles it (mute fills solid red while muted, at the same size); hovering a row reveals unassign (×); right-click opens the window's channel menu.
@@ -353,7 +354,7 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 | Several browsers, or several profiles of one browser | Each connects separately; all their tabs get channels. A tab's ID includes its browser, so equal tab numbers in two browsers never clash |
 | Volume changed with a site's or app's own slider | The channel follows the new level and the fader detaches |
 | Tab muted from the browser's tab strip | The channel shows muted, and the LED follows |
-| Output device switched (audio interface ↔ AirPods) | Native sources keep playing on the new device at the same volumes; master mode availability updates |
+| Output device switched (audio interface ↔ AirPods), from the header's picker or elsewhere | Native sources keep playing on the new device at the same volumes; master mode availability updates; the Output picker shows the new device |
 | A grouped app opens a new helper process | It joins its group's channel instead of taking a new one |
 | A site changes its page and an adapter breaks | That channel falls back to "Mute only", and the channel names the site that needs an adapter fix |
 | The extension updates while tabs are open | Each open tab's new page script takes over its players without a reload. The extension re-injects into tabs that never report back (twice), and if an audible tab still finds no player within a minute of the update, its channel shows "Reload tab" and its play LED blinks amber: click it, or hold play for 2 s |
@@ -450,21 +451,24 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [x] All Swift and extension tests pass
 - [x] Media and Microphone buttons turn solid red while on, also in a background window; VoiceOver reads them as toggles
 - [x] Settings → Controller shows Holding play on Spotify; General shows the master setting for the current state
-- [ ] Unplug the controller: after about 5 s "Audio mixer active" and the channels close up; a quick unplug and replug changes nothing
-- [ ] Closing a tab between two others: the ones below move up once the pointer leaves the window or panel, not before
-- [ ] Without a controller the panel lists only occupied channels, each with a slider, or "Nothing playing"
-- [ ] Plugging the controller back in keeps the order; the panel shows 8 rows with percentages; closing a tab leaves a Free channel
-- [ ] On the MacBook speakers channel 1 becomes Master and sources move down one; on the Scarlett it stays a normal channel
-- [ ] A short press plays and pauses; a 2 s hold on YouTube reloads, with the hint after 1 s
-- [ ] A 2 s hold on Spotify: "Added to Liked Songs"; again: "Already in Liked Songs", still liked; an ad or a podcast: "Can't add this to Liked Songs"
+- [x] Unplug the controller: after about 5 s "Audio mixer active" and the channels close up; a quick unplug and replug changes nothing
+- [x] Closing a tab between two others: the ones below move up once the pointer leaves the window or panel, not before
+- [x] Without a controller the panel lists only occupied channels, each with a slider, or "Nothing playing"
+- [x] Plugging the controller back in keeps the order; the panel shows 8 rows with percentages; closing a tab leaves a Free channel
+- [x] On the MacBook speakers channel 1 becomes Master and sources move down one; on the Scarlett it stays a normal channel
+- [x] A short press plays and pauses; a 2 s hold on YouTube reloads, with the hint after 1 s
+- [x] A 2 s hold on Spotify: "Added to Liked Songs"; again: "Already in Liked Songs", still liked; an ad or a podcast: "Can't add this to Liked Songs"
 - [ ] With Holding play on Spotify set to Reload the tab, the hold reloads Spotify; an amber "Reload tab" Spotify tab reloads on a hold
 - [x] Panel drag and drop: swap, onto a Free row, from Unassigned, dropping outside cancels and the panel stays open
-- [ ] "Add to the end" in the panel without a controller
+- [x] "Add to the end" in the panel without a controller
 - [x] Mute buttons (header, strips) solid red while on and the same size in both states, matching the other buttons
 - [x] Right-click a panel row: Move to channel, Bring to the front, Unassign, Always mute
 - [ ] Without a controller, Move to channel offers one "Free" entry; the menu with VoiceOver
 - [ ] VoiceOver reads the panel sliders ("Spotify, channel 2, volume 45%"); Reduce Motion: strips and rows close up in place
 - [ ] Benchmark: no change with the windows closed
+- [x] The header in one row that lines up: status, Output picker and Media, Input picker and Microphone, Settings; pickers as wide as their names
+- [ ] Switching output and input from the pickers, and from Control Centre (the pickers follow); the header at every text size
+- [ ] Panel: "Mute:" label and the separator above the channels
 
 ## Testing, logging and auditing
 

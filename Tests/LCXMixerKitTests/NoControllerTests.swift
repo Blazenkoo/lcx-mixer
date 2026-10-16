@@ -190,3 +190,32 @@ final class PlayHoldTests: XCTestCase {
         XCTAssertEqual(m.settings.spotifyHold, .likeSong)
     }
 }
+
+/// The header's Output and Input pickers list devices as Sound settings does.
+final class DeviceListTests: XCTestCase {
+
+    private func device(_ id: UInt32, _ name: String, uid: String? = nil, hidden: Bool = false,
+                        inputs: Int = 0, outputs: Int = 0) -> RawAudioDevice {
+        RawAudioDevice(id: id, uid: uid ?? "uid-\(id)", name: name, hidden: hidden, inputStreams: inputs, outputStreams: outputs)
+    }
+
+    func testOutputsAndInputsAreListedByName() {
+        let raw = [
+            device(1, "Scarlett 2i2 4th Gen", inputs: 1, outputs: 1),
+            device(2, "MacBook Pro Speakers", outputs: 1),
+            device(3, "MacBook Pro Microphone", inputs: 1),
+        ]
+        XCTAssertEqual(CA.visibleDevices(raw, input: false).map(\.name), ["MacBook Pro Speakers", "Scarlett 2i2 4th Gen"])
+        XCTAssertEqual(CA.visibleDevices(raw, input: true).map(\.name), ["MacBook Pro Microphone", "Scarlett 2i2 4th Gen"])
+    }
+
+    func testHiddenDevicesAndTheAppsOwnTapDevicesAreLeftOut() {
+        let raw = [
+            device(1, "MacBook Pro Speakers", outputs: 1),
+            device(2, "LCX Mixer", uid: "lcxmixer-1234", inputs: 1, outputs: 1),
+            device(3, "Hidden", hidden: true, outputs: 1),
+        ]
+        XCTAssertEqual(CA.visibleDevices(raw, input: false).map(\.name), ["MacBook Pro Speakers"])
+        XCTAssertEqual(CA.visibleDevices(raw, input: true), [])
+    }
+}

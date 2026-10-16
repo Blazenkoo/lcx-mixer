@@ -84,7 +84,7 @@ In each browser you use, open its extensions page (`chrome://extensions`, `edge:
 
 The **mixer window** (shown at the top) opens whenever you start the app yourself; at login, the app starts quietly in the menu bar. It lays the 8 channels out in the same order as the controller's columns. Sources that are playing without a channel wait in the **Unassigned** tab below, where you can assign them or drag them onto a channel; the **Muted** tab beside it shows what your mute list is silencing.
 
-The window header and the panel have **Media** and **Microphone** buttons that mute all media and your microphone, turning red while on.
+The window's header has **Output** and **Input** pickers to switch the Mac's speakers or headphones and microphone, each with its mute button: **Media** mutes everything playing through the mixer and **Microphone** your selected microphone, turning red while on. The menu-bar panel has the same two mute buttons.
 
 The **menu-bar panel** shows the same channels as compact rows, one click away. Drag a row onto another to move it, or right-click it for the same menu as in the window:
 

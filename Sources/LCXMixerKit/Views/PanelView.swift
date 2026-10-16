@@ -18,6 +18,7 @@ struct PanelView: View {
                 MuteToggles(core: core)
                 Spacer()
             }
+            Divider()
 
             if core.wrongExtensionFolder && core.browserConnected {
                 Button {
