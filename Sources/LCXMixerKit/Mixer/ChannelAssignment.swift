@@ -104,6 +104,14 @@ struct ChannelAssignment: Equatable {
         return pushedOff
     }
 
+    /// The reverse of `shiftDown`: every source from `first + 1` on moves up one channel, onto
+    /// `first`, and the last channel is left free.
+    mutating func shiftUp(into first: Int) {
+        guard first < channels.count else { return }
+        for ch in first..<(channels.count - 1) { set(ch, channels[ch + 1]) }
+        set(channels.count - 1, nil)
+    }
+
     /// Takes a source off every list. Its channel, if any, is cleared separately.
     mutating func forget(_ id: String) {
         waiting.removeAll { $0 == id }

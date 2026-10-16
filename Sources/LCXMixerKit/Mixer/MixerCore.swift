@@ -1216,25 +1216,43 @@ final class MixerCore: ObservableObject {
         devicesChanged()
         listenToMasterVolume()
         outputName = engine.outputName
-        masterSupported = engine.masterSupported
         masterVolume = engine.masterVolume ?? 0
-        masterModeChanged()
+        updateMasterSupport(engine.masterSupported)
         onStatusChange?()
     }
 
+    /// Whether the current output lets macOS set its volume (from the output; tests set it directly).
+    func updateMasterSupport(_ supported: Bool) {
+        masterSupported = supported
+        masterModeChanged()
+    }
+
+    /// Master was on channel 1 the last time master mode was looked at.
+    private var masterWasActive = false
+
+    /// Master taking channel 1 moves every source down one (the last waits if all 8 were taken);
+    /// master leaving moves them all back up, so switching outputs returns the same layout. The
+    /// same with and without a controller.
     private func masterModeChanged() {
-        if masterActive, channels[0] != nil, !hardwarePresent {
-            // Without a controller every source moves down one to make room; the last may have to wait.
-            if assignment.held.isEmpty { assignment.closeGaps(from: 0) }
-            if let pushedOff = assignment.shiftDown(from: 0) { assignment.addWaiting(pushedOff, first: true) }
-        } else if masterActive, let id = channels[0] {
-            assignment.clear(0)
-            if let ch = firstFreeChannel() { place(id, on: ch) } else { assignment.addWaiting(id, first: true) }
-        } else if !masterActive {
-            fillFromWaiting(0)
+        let active = masterActive
+        defer {
+            masterWasActive = active
+            detachAllFaders()
+            scheduleRefresh()
         }
-        detachAllFaders()
-        scheduleRefresh()
+        guard active != masterWasActive, assignment.held.isEmpty else {
+            if !active { fillFromWaiting(0) }
+            return
+        }
+        if active {
+            if !hardwarePresent { assignment.closeGaps(from: 0) }
+            if channels[0] != nil, let pushedOff = assignment.shiftDown(from: 0) {
+                assignment.addWaiting(pushedOff, first: true)
+            }
+        } else {
+            assignment.shiftUp(into: 0)
+            fillFromWaiting(MixerCore.channelCount - 1)
+        }
     }
 
     func applyIgnoreList() {

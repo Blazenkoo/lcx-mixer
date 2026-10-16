@@ -136,10 +136,60 @@ final class NoControllerTests: XCTestCase {
         XCTAssertEqual(Array(m.core.channels.prefix(2)), [nil, tabID(3)], "with a controller, gaps stay")
     }
 
-    func testMasterSettingsAreKeptApart() {
+    func testMasterIsOnByDefaultWithAndWithoutAController() {
         let m = TestMixer(self)
-        XCTAssertFalse(m.settings.masterMode)
+        XCTAssertTrue(m.settings.masterMode)
         XCTAssertTrue(m.settings.masterModeWithoutController)
+    }
+
+    func testShiftUpIsTheReverseOfShiftDown() {
+        var a = ChannelAssignment(channels: 8)
+        a.place("a", on: 0); a.place("b", on: 1); a.place("c", on: 3)
+        _ = a.shiftDown(from: 0)
+        a.shiftUp(into: 0)
+        XCTAssertEqual(Array(a.channels.prefix(4)), ["a", "b", nil, "c"])
+    }
+
+    func testMasterOnAndOffWithAControllerReturnsTheSameLayout() {
+        let m = TestMixer(self)
+        m.report((1...3).map { tab($0) })
+        m.core.updateMasterSupport(true)   // e.g. the MacBook speakers
+        XCTAssertNil(m.core.channels[0])
+        XCTAssertEqual(Array(m.core.channels.prefix(4)), [nil, tabID(1), tabID(2), tabID(3)])
+        m.core.updateMasterSupport(false)  // back to the Scarlett
+        m.wait(0.05)
+        XCTAssertEqual(Array(m.core.channels.prefix(4)), [tabID(1), tabID(2), tabID(3), nil])
+    }
+
+    func testMasterOnWithEightSourcesMakesTheLastOneWait() {
+        let m = TestMixer(self)
+        m.report((1...8).map { tab($0) })
+        m.core.updateMasterSupport(true)
+        XCTAssertEqual(m.core.waiting, [tabID(8)])
+        m.core.updateMasterSupport(false)
+        m.wait(0.05)
+        XCTAssertEqual(m.core.channels, (1...8).map { tabID($0) }, "the one that waited comes back at the end")
+    }
+
+    func testMasterOnAndOffWithoutAController() {
+        let m = TestMixer(self, controllerPresent: false)
+        m.report((1...3).map { tab($0) })
+        m.core.updateMasterSupport(true)
+        m.wait(0.05)
+        XCTAssertEqual(Array(m.core.channels.prefix(4)), [nil, tabID(1), tabID(2), tabID(3)])
+        m.core.updateMasterSupport(false)
+        m.wait(0.05)
+        XCTAssertEqual(Array(m.core.channels.prefix(4)), [tabID(1), tabID(2), tabID(3), nil])
+    }
+
+    func testTurningTheSettingOffMovesChannelsBackUp() {
+        let m = TestMixer(self)
+        m.report((1...2).map { tab($0) })
+        m.core.updateMasterSupport(true)
+        m.settings.masterMode = false
+        m.core.updateMasterSupport(true)   // the app reacts to the setting the same way
+        m.wait(0.05)
+        XCTAssertEqual(Array(m.core.channels.prefix(3)), [tabID(1), tabID(2), nil])
     }
 }
 

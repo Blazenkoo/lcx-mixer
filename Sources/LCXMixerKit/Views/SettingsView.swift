@@ -260,9 +260,6 @@ private struct GeneralPage: View {
                 } label: {
                     SettingLabel(title: "Output device", description: "Where the Mac plays sound, the same as in Sound settings.")
                 }
-                Toggle(isOn: Binding(get: { core.muteAll }, set: { _ in core.toggleMuteAll() })) {
-                    SettingLabel(title: "Mute all media", description: "Everything playing through the mixer. System sounds and calls still play.")
-                }
             } header: {
                 VStack(alignment: .leading, spacing: 10 * scale) {
                     PageHeader(title: "General")
@@ -276,11 +273,6 @@ private struct GeneralPage: View {
                 } label: {
                     SettingLabel(title: "Input device", description: "The microphone the Mac uses, the same as in Sound settings.")
                 }
-                Toggle(isOn: Binding(get: { core.micMuted }, set: { _ in core.toggleMicrophone() })) {
-                    SettingLabel(title: "Mute the microphone",
-                                 description: core.micMutable ? "For every app at once." : "This input can't be muted by apps.")
-                }
-                .disabled(!core.micMutable)
             } header: {
                 GroupTitle(title: "Input")
             }

@@ -164,12 +164,12 @@ Each of the 8 columns is one channel. The controller stays on **Factory Template
 
 **Microphone mute:** uses the input device's own mute where it has one, and otherwise sets its input volume to zero and back. Devices that allow neither, such as Focusrite Scarlett interfaces, show "Can't be muted by apps" in the pop-up. Mute changes made elsewhere, and switching to another microphone, are followed within half a second. Quitting the app unmutes a microphone the app muted, so it is never left silent.
 
-**Master mode (a setting with a controller, off by default; a separate one without, on by default)**
+**Master mode (on by default; one setting with a controller and a separate one without)**
 
 - When on, fader 1 controls macOS's output volume and sources use channels 2–8. Channel 1's LEDs stay off and its slot shows a distinct "Master" style.
 - Only available when the current output device lets macOS control its volume (MacBook speakers, AirPods, HDMI). With an audio interface that sets its volume in hardware selected, the toggle is greyed out with a one-line reason.
-- When the output device changes, master mode adapts on its own. With a controller, a source sitting on channel 1 when master mode turns on moves to Unassigned and takes the next free channel. Without one, every source moves down one; if all 8 channels were taken, the last goes to Unassigned.
-- The two settings are remembered apart, so plugging a controller in or out can switch master on or off. When a controller connects and its setting is off, channel 1 becomes free and nothing else moves.
+- When the output device changes, master mode adapts on its own. When master takes channel 1, every source moves down one; if all 8 channels were taken, the last goes to Unassigned. When master leaves (an output macOS can't control, or the setting turned off), they all move back up, and a waiting source takes the last channel. So switching between the Scarlett and the MacBook speakers always returns the same layout. This is the same with and without a controller.
+- The two settings are remembered apart, so plugging a controller in or out can switch master on or off, with the same shift.
 
 **Soft takeover:** whenever a fader's position doesn't match its channel's real volume (new source, volume changed elsewhere, master switched), the fader is detached. If the fader is below the real level, the next touch takes over at once, since a jump down is always safe. If it's above, it does nothing until it's moved down to the real level. The UI shows "Move fader down" while it waits.
 
@@ -311,13 +311,13 @@ The controller LEDs, the window and the menu-bar panel use the same four colours
 
 ## Settings and what is remembered
 
-General opens with **Output** and **Input**: the device pickers and the mute switches, the same as the window header. Settings has a sidebar of sections in two groups, **Mixer** (General, Controller, Browsers) and **Sources** (App groups, Mute list, Ignore list), then About on its own. The groups always stay open, with a thin line between them. Names only, with a status beside them where it helps: how many browsers are connected, and each list's count. Controller has none: working without one is fine. The window can be resized, never below about 680 × 460 pt (more with larger text), and remembers its size, place and last section; its title follows the section.
+General opens with **Output** and **Input**: the device pickers, the same as in the window header (the mute buttons stay in the header and the panel). Settings has a sidebar of sections in two groups, **Mixer** (General, Controller, Browsers) and **Sources** (App groups, Mute list, Ignore list), then About on its own. The groups always stay open, with a thin line between them. Names only, with a status beside them where it helps: how many browsers are connected, and each list's count. Controller has none: working without one is fine. The window can be resized, never below about 680 × 460 pt (more with larger text), and remembers its size, place and last section; its title follows the section.
 
 **The three lists work like a Finder list.** Each sits in a rounded box only as tall as its entries, and scrolls only once the window can't show them all; an empty list says so in the box. Click a column title to sort. Click, ⌘-click, ⇧-click, the arrow keys or ⌘A select, and Delete or **Remove** removes the selection; ⌘Z brings it back. A double-click or Return edits an entry in place: Return saves and Esc goes back. **Add…** opens a sheet with Cancel and Add, which stays dimmed until the entry can be used, with a message for a duplicate or a typo; a pasted web address becomes its website. On the mute and ignore lists, **Move to Ignore list** or **Move to Mute list** moves the selection. Remove and Move are dimmed until a row is selected. A filter appears once a list has more than 8 entries.
 
 | Setting | Default |
 | --- | --- |
-| Use fader 1 as master volume (with a controller) | Off; greyed out when the output device sets its volume in hardware |
+| Use fader 1 as master volume (with a controller) | On (off before 2.4); greyed out when the output device sets its volume in hardware |
 | Use channel 1 as master volume (without a controller) | On; greyed out the same way. Only the setting for the current state shows |
 | Controller | Novation Launch Control XL mk2; alternatives: Mackie Control (experimental) and any MIDI controller (MIDI learn), with a device picker. Without one connected: "No controller connected. The mixer works from its window and the menu bar." |
 | Holding play on Spotify | Add to Liked Songs; alternative: Reload the tab |
@@ -471,8 +471,10 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [x] The header in one row that lines up: status, Output picker and Media, Input picker and Microphone, Settings; pickers as wide as their names
 - [x] Switching output and input from the pickers, and from Control Centre (the pickers follow); the header at every text size
 - [x] Panel: "Mute:" label and the separator above the channels
-- [ ] Settings → General: Output and Input on top; the Settings button with its label
-- [ ] The rename: Media Mixer in the menus, the Dock, About, the menu-bar tooltip, the browser's extensions page; "Media mixer active" without a controller; LCX Mixer.app moved to the Trash by the build; launch at login and the audio permission still work
+- [x] Settings → General: Output and Input on top; the Settings button with its label
+- [ ] With a controller: switching to the MacBook speakers turns channel 1 into Master (sources move down one); back to the Scarlett, or the setting off, moves them back up
+- [x] The rename: Media Mixer in the menus, the Dock, About, the menu-bar tooltip, the browser's extensions page; LCX Mixer.app moved to the Trash by the build; the audio permission and the extension still work
+- [ ] Launch at login after the rename
 
 ## Testing, logging and auditing
 

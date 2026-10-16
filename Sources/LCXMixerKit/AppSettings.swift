@@ -135,7 +135,7 @@ final class AppSettings: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         defaults.register(defaults: [
-            "masterMode": false,
+            "masterMode": true,
             "masterModeWithoutController": true,
             "launchAtLogin": true,
             "showOSD": true,
