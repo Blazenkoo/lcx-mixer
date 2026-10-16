@@ -63,7 +63,7 @@ In each browser you use, open its extensions page (`chrome://extensions`, `edge:
 | Control | Action |
 | --- | --- |
 | Fader | Volume. If the fader is below the current level it takes over immediately; if it's above, move it down to take over. |
-| Top button row | Play / pause (browser tabs). Double-press on a Twitch channel jumps to live. Hold for 3 seconds to reload the tab. |
+| Top button row | Play / pause (browser tabs). Double-press on a Twitch channel jumps to live. Hold for 2 seconds to reload the tab, or on Spotify to add the song to Liked Songs (Settings → Controller). |
 | Bottom button row | Mute. Hold for 1 second to unassign the channel. |
 | Side **Mute** button | Mute / unmute all media playback: what you hear |
 | Side **Solo** button | Mute / unmute your microphone: what others hear from you |
@@ -71,6 +71,8 @@ In each browser you use, open its extensions page (`chrome://extensions`, `edge:
 | Middle knob row | Seek shuttle: turn right to skip forward, left to skip back; the further you turn, the bigger the jumps (5 / 15 / 30 s). Centre stops. |
 
 **Mute and Solo** are deliberately split: Mute silences everything playing on your Mac, Solo silences your current microphone for every app at once (Discord, Zoom, OBS…). Both light up while on.
+
+**No controller?** LCX Mixer works on its own. The window says "Audio mixer active", channels close up as sources leave so there are no gaps, channel 1 is master volume (on outputs macOS can control, such as the MacBook speakers), and the menu-bar panel gets a volume slider for each channel. Plug a controller in at any time; nothing moves.
 
 **LED colours:** green = playing, amber = paused, dim green = a native app (no play/pause), red = muted, off = empty channel.
 
@@ -82,7 +84,9 @@ In each browser you use, open its extensions page (`chrome://extensions`, `edge:
 
 The **mixer window** (shown at the top) opens whenever you start the app yourself; at login, the app starts quietly in the menu bar. It lays the 8 channels out in the same order as the controller's columns. Sources that are playing without a channel wait in the **Unassigned** tab below, where you can assign them or drag them onto a channel; the **Muted** tab beside it shows what your mute list is silencing.
 
-The **menu-bar panel** shows the same channels as compact rows, one click away:
+The window header and the panel have **Media** and **Microphone** buttons that mute all media and your microphone, turning red while on.
+
+The **menu-bar panel** shows the same channels as compact rows, one click away. Drag a row onto another to move it, or right-click it for the same menu as in the window:
 
 <img src="docs/images/menu-bar-panel.png" width="402" alt="The menu-bar panel listing the same four channels as rows, with status dots, volume percentages, and an Assign button for App Store">
 

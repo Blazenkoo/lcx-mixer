@@ -2,7 +2,7 @@
 
 This is the product specification LCX Mixer was built from, kept up to date with what is built. For build and install steps, see the [README](../README.md).
 
-**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2.0 code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual · v2.0.1 performance: nothing draws while it can't be seen, lighter background checks · v2.1 event-driven: the app sleeps until something changes, and native apps at 100% play untouched · v2.1.1 crossfaded hand-over when a tap starts or ends · v2.2 foundation, nothing new to see or hear: the mixer core split into parts, one extension file per site, automated tests, unified logging and performance markers, CI and code scanning, a security policy, and a version on saved settings. Also: real level meters for native apps at 100% while the mixer is open, mute-listed sources on one quiet line instead of in Unassigned, and copy and paste in text fields · v2.3 Unassigned and Muted tabs with their counts, a muted source that tries to play is pointed out, activity drops stay below the volume and real meters follow the fader's scale, Settings with a sidebar and editable lists, a proper Settings button.
+**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2.0 code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual · v2.0.1 performance: nothing draws while it can't be seen, lighter background checks · v2.1 event-driven: the app sleeps until something changes, and native apps at 100% play untouched · v2.1.1 crossfaded hand-over when a tap starts or ends · v2.2 foundation, nothing new to see or hear: the mixer core split into parts, one extension file per site, automated tests, unified logging and performance markers, CI and code scanning, a security policy, and a version on saved settings. Also: real level meters for native apps at 100% while the mixer is open, mute-listed sources on one quiet line instead of in Unassigned, and copy and paste in text fields · v2.3 Unassigned and Muted tabs with their counts, a muted source that tries to play is pointed out, activity drops stay below the volume and real meters follow the fader's scale, Settings with a sidebar and editable lists, a proper Settings button · v2.4 works without a controller (channels close up, channel 1 is master volume, a volume slider per channel in the menu-bar panel), Media and Microphone buttons on screen, drag and drop in the menu-bar panel, a 2-second hold on play, and Liked Songs on Spotify.
 
 ## Contents
 
@@ -119,8 +119,9 @@ A source is either one native app (or app group) or one browser tab. A new sourc
 3. **Same tab, new site:** a tab that navigates elsewhere keeps its channel; the slot updates its icon and name.
 4. **All channels full:** the new source goes to the unassigned list (see next section) and waits.
 5. **A channel frees:** the source that has waited longest in the unassigned list takes it. Sources you unassigned yourself don't count as waiting.
-6. **No reshuffling:** channels are never reordered or compacted automatically. Drag-and-drop is the only way to move a source to a different channel.
+6. **No reshuffling with a controller:** channels are never reordered or compacted automatically. Drag-and-drop is the only way to move a source to a different channel. Without a controller, see rule 8.
 7. **After a restart:** sources that are still open when the app starts again go back to the channels they had, including a paused tab that held one. Each of those channels is held for 10 seconds; a source that hasn't come back by then gives its channel to whatever is waiting. New sources take other free channels in the meantime, and your own Assign and drag can use any free channel.
+8. **Without a controller:** once no Launch Control XL, Mackie surface or MIDI-learn device has been connected for 5 s (so a loose cable changes nothing), channels close up. When a source leaves its channel (its tab closes, its app quits, you click ×, you choose Always mute, or master takes channel 1), every source below moves up one, in order, and a waiting source joins at the end. Pausing or silence still never frees a channel. Nothing moves while the pointer is over the mixer window or the panel; it happens once the pointer leaves, and meanwhile a waiting source takes the gap straight away. Dropping a source on a free channel puts it right after the last occupied one, and **Move to channel** offers the free channels as one entry. After a restart the channels come back in order, closing up when the 10-second hold ends. Plugging a controller in keeps the order; from then on rule 6 applies. Nothing in the app calls this a mode.
 
 ## Unassigned sources, the mute list and the ignore list
 
@@ -147,7 +148,7 @@ Each of the 8 columns is one channel. The controller stays on **Factory Template
 | Control | Action | Notes |
 | --- | --- | --- |
 | Fader (per channel) | Volume, 0–100% | Soft takeover; volume curve so the lower half is usable |
-| Top button row, Track Focus (per channel) | Play / pause | Browser tabs only; does nothing on native apps (LED dim green). Acts on release. Double-press on Twitch jumps to live. **Hold 3 s = reload the tab** (a hint shows after 1 s) |
+| Top button row, Track Focus (per channel) | Play / pause | Browser tabs only; does nothing on native apps (LED dim green). Acts on release. Double-press on Twitch jumps to live. **Hold 2 s = reload the tab**, or on Spotify add the song to Liked Songs (below). A hint naming the action shows after 1 s |
 | Bottom button row, Track Control (per channel) | Mute / unmute | Works on every source. **Hold 1 s = unassign the channel** |
 | Side button **Mute** | Mute / unmute all media playback: what you hear | Restores each channel's own mute state afterwards. LED yellow while on |
 | Side button **Solo** | Mute / unmute the microphone: what others hear from you | Mutes the Mac's current input device for every app at once. LED yellow while on |
@@ -155,15 +156,18 @@ Each of the 8 columns is one channel. The controller stays on **Factory Template
 | Middle knob row (Send B) | Seek shuttle | See [Knobs](#knobs) |
 | Top knob row, Device and Record Arm, arrows | Unassigned | |
 
+**Liked Songs (Spotify):** holding play for 2 s on a Spotify channel presses Spotify's own Add to Liked Songs button in the player bar. The pop-up says "Added to Liked Songs", or "Already in Liked Songs" for a song that's liked already (a hold never removes one). With nothing to like (an ad, a podcast episode, nothing playing, signed out, or a player the page script can't read) it says "Can't add this to Liked Songs" and nothing else happens; no answer within 2 s counts the same. While the tab's play light blinks amber ("Reload tab"), the hold reloads instead. Settings → Controller → **Holding play on Spotify** switches it back to reloading. No Spotify account access, API or network requests.
+
 **Mute and Solo are split on purpose.** Mute silences everything playing on the Mac; Solo silences the microphone, so a muted mic is never confused with muted media. The pop-up names which was pressed ("All media · Muted", "Microphone · MacBook Pro Microphone · Muted").
 
 **Microphone mute:** uses the input device's own mute where it has one, and otherwise sets its input volume to zero and back. Devices that allow neither, such as Focusrite Scarlett interfaces, show "Can't be muted by apps" in the pop-up. Mute changes made elsewhere, and switching to another microphone, are followed within half a second. Quitting the app unmutes a microphone the app muted, so it is never left silent.
 
-**Master mode (toggle in Settings, off by default)**
+**Master mode (a setting with a controller, off by default; a separate one without, on by default)**
 
 - When on, fader 1 controls macOS's output volume and sources use channels 2–8. Channel 1's LEDs stay off and its slot shows a distinct "Master" style.
 - Only available when the current output device lets macOS control its volume (MacBook speakers, AirPods, HDMI). With an audio interface that sets its volume in hardware selected, the toggle is greyed out with a one-line reason.
-- When the output device changes, master mode adapts on its own. If a source is sitting on channel 1 when master mode turns on, it moves to Unassigned and takes the next free channel.
+- When the output device changes, master mode adapts on its own. With a controller, a source sitting on channel 1 when master mode turns on moves to Unassigned and takes the next free channel. Without one, every source moves down one; if all 8 channels were taken, the last goes to Unassigned.
+- The two settings are remembered apart, so plugging a controller in or out can switch master on or off. When a controller connects and its setting is off, channel 1 becomes free and nothing else moves.
 
 **Soft takeover:** whenever a fader's position doesn't match its channel's real volume (new source, volume changed elsewhere, master switched), the fader is detached. If the fader is below the real level, the next touch takes over at once, since a jump down is always safe. If it's above, it does nothing until it's moved down to the real level. The UI shows "Move fader down" while it waits.
 
@@ -211,7 +215,7 @@ Surfaces in Mackie Control (MCU) mode, such as the Behringer X-Touch family, wor
 
 ## Mixer window
 
-The window shows the 8 channels side by side as vertical strips, in the same left-to-right order as the controller's columns, so the screen maps 1:1 onto the hardware. The menu-bar panel uses stacked rows instead (next section).
+The window shows the 8 channels side by side as vertical strips, in the same left-to-right order as the controller's columns, so the screen maps 1:1 onto the hardware. Without a controller, the free strips gather at the end and strips slide up when one leaves (in place with Reduce Motion). The menu-bar panel uses stacked rows instead (next section).
 
 **Each channel strip, top to bottom**
 
@@ -219,14 +223,14 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 2. **Icon:** a small app icon for native apps, or the site's icon for browser tabs. If neither exists, a first-letter tile.
 3. **Name and detail:** short name ("Spotify", "League", "Discord") plus one truncated line of detail (page title, or "Client + game").
 4. **Status:** glyph (play, pause or mute) plus a coloured dot, as in [Status colours](#status-colours).
-5. **Volume:** a vertical bar with the percentage. A ghost marker shows where the physical fader sits. When soft takeover is waiting, a short hint replaces the percentage: "Move fader down".
+5. **Volume:** a vertical bar with the percentage. With a controller, a ghost marker shows where the physical fader sits. When soft takeover is waiting, a short hint replaces the percentage: "Move fader down".
 6. **Level meter:** a real meter for native apps. Below 100% or muted, their sound passes through the app, which measures it. At 100% their sound plays untouched, and while a meter is on screen the app listens to it to measure the level, without changing it (since v2.2; before, they showed activity like browser tabs). Real meters use the fader's scale (since v2.3), so a sound at full strength peaks exactly at the fader. For browser tabs, macOS can't separate each tab's sound, so while a tab is audible the bar shows activity instead, made to look unlike a level: neutral drops land at random spots below the channel's volume and ripple outward both ways, fading as they spread and stopping at the volume line, since nothing heard can be louder. Fewer land at a lower volume: the same number per length of bar. They're quick and plentiful, since sound changes many times a second: about 5 drops a second on a full bar, several overlapping, each wave spreading in 0.8 s, at every volume. With Reduce Motion, each drop glows and fades in place instead: about one a second, each lasting 2.4 s.
 7. **Buttons:** play/pause (tabs only), mute, and unassign (×).
 
 **Interactions**
 
 - Clicking the icon or name brings that app, or that exact browser tab, to the front.
-- Dragging a strip from anywhere on it (except the volume bar and buttons, which keep their own behaviour) onto another channel moves it there, swapping if occupied. Sources can also be dragged in from the Unassigned list.
+- Dragging a strip from anywhere on it (except the volume bar and buttons, which keep their own behaviour) onto another channel moves it there, swapping if occupied. Sources can also be dragged in from the Unassigned list. Without a controller, a drop on a free strip lands right after the last occupied one.
 - Right-clicking a strip opens a menu: **Move to channel** (each channel listed as "Free" or "swap with …"), **Bring to the front**, **Unassign** and **Always mute**. It's the non-mouse way to move a channel, and works with VoiceOver.
 - An empty channel shows a dashed outline with "Free".
 
@@ -238,27 +242,30 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 
 **Welcome window and About**
 
-- On the first launch of v2, a welcome window shows the visual and the three setup steps (audio permission, browser extension, controller), each with its live state and a button to fix it.
+- On the first launch of v2, a welcome window shows the visual and the setup steps (audio permission, browser extension, and an optional controller), each with its live state and a button to fix it.
 - **About**, in the menu-bar panel, shows the visual with the version, credits and links, and reopens the setup steps.
 - **The visual:** the app's icon and name above a tilted field of square tiles that rise and fall like level meters, green → yellow → red, fading into the bottom edge. Each tower has its own rhythm: a quick rise, a slow fall. Tiles show the icons of apps and websites on the Mac in grey, and generic glyphs elsewhere. Windows have 32 pt corners. With Reduce Motion on it's a still frame.
 - A small live copy sits at the bottom of Settings with the credits; clicking it opens About.
 
 **Header and footer**
 
-- **Header:** controller status ("Launch Control XL connected" or a red "Not connected" warning), "All media muted" and "Microphone muted" when on, and the current output device.
+- **Header:** "Launch Control XL connected" (the controller's name), or "Audio mixer active" without one; the **Media** and **Microphone** buttons; and the current output device.
+- **Media and Microphone buttons** (in the header and the panel's top line): mute all media and the microphone, like the controller's Mute and Solo and in step with them. Each is an icon with its label, solid red while on, read by VoiceOver as an on/off toggle. Microphone is dimmed, with "Can't be muted by apps", when the current input can't be muted.
 - **Below the strips:** the Unassigned and Muted tabs (see above), with the same space above the strips as below them.
 - **Settings** opens from the Settings button in the header, a bordered button like the strips' own, or with ⌘,.
 
 ## Menu-bar icon, panel and on-screen pop-up
 
-**Menu-bar icon:** one monochrome icon that follows the menu bar's light or dark appearance. It changes in three cases: a small slash when the controller is disconnected, a filled variant while all media is muted, and a crossed-out microphone beside it while the microphone is muted.
+**Menu-bar icon:** one monochrome icon that follows the menu bar's light or dark appearance. It changes in two cases: a filled variant while all media is muted, and a crossed-out microphone beside it while the microphone is muted. A missing controller no longer shows: the mixer works without one.
 
 **Panel (left or right click):** the same information as the window, as vertically stacked rows, one per channel, without app icons to keep it compact.
 
-- **Each channel row:** channel number · source name with media title ("YouTube – video title") · status dot · status glyph · volume percentage. Empty channels show "Free" in a quiet style.
-- **Row actions:** clicking a row's mute or play glyph toggles it; hovering a row reveals unassign (×).
+- **Top line:** the Media and Microphone buttons, as in the window header.
+- **Channel rows with a controller:** all 8, as the faders sit: channel number · source name with media title ("YouTube – video title") · status dot · status glyph · volume percentage. Empty channels show "Free" in a quiet style.
+- **Channel rows without a controller:** only occupied channels (and Master), each on two lines: the same top line, then a volume slider and its percentage, lined up under the name. "Nothing playing" when there are none. The panel grows and shrinks with the list.
+- **Row actions:** clicking a row's mute or play glyph toggles it; hovering a row reveals unassign (×); right-click opens the window's channel menu.
+- **Drag and drop:** a row can be dragged onto another (swapping if occupied), from anywhere except its slider and buttons; sources can be dragged in from Unassigned. Without a controller, dropping below the last row ("Add to the end") puts a source after the last occupied channel. Dropping elsewhere cancels.
 - **Below the rows:** the Unassigned and Muted tabs as compact rows (a small icon, the name and the main action), then "Open mixer", "Settings" and "Quit".
-- **Header line:** controller status, "Media muted" and "Mic muted" when on.
 
 **On-screen pop-up:** touching any control shows a small translucent pill for about 2 seconds, near the top of the screen where that source is playing. It shows the source's icon, the channel number, the source name with its media title, and the new volume or state ("Spotify – song · 45%"). It also appears for 3 seconds when a source gets a channel, waits for one, or is unassigned. It follows light and dark mode and can be turned off in Settings.
 
@@ -270,7 +277,7 @@ Native apps get volume and mute through the Mac app's audio engine. Browser tabs
 | --- | --- | --- | --- | --- |
 | Native app (League, Discord, Music…) | Audio engine, only below 100% or muted | Not available | Not available | At 100% it plays untouched. Below, it passes through the app (a few milliseconds of delay); the change-over is a 20 ms crossfade |
 | YouTube | YouTube's player (its own slider follows) | Player's play/pause | Both | Ads play in the same player |
-| Spotify Web | Moves Spotify's own volume slider; Spotify applies its own loudness curve | Spotify's play/pause button | Seek through Spotify's progress bar; speed not available | |
+| Spotify Web | Moves Spotify's own volume slider; Spotify applies its own loudness curve | Spotify's play/pause button; a 2 s hold presses its Add to Liked Songs button | Seek through Spotify's progress bar; speed not available | |
 | Twitch live | Moves Twitch's own volume slider (falls back to the video element if Twitch renames it) | "Pause" silences the tab and keeps the stream live | Not available | Double-press play jumps to live |
 | Twitch past broadcasts | Moves Twitch's own volume slider | Player's play/pause | Both | |
 | Any other site | The page's audio and video elements | Same elements | Both, when the media has a fixed length | Sites that make sound in other ways get "Mute only" |
@@ -301,14 +308,16 @@ The controller LEDs, the window and the menu-bar panel use the same four colours
 
 ## Settings and what is remembered
 
-Settings has a sidebar of sections in two groups, **Mixer** (General, Controller, Browsers) and **Sources** (App groups, Mute list, Ignore list), then About on its own. The groups always stay open, with a thin line between them. Names only, with a status beside them where it helps: "Not connected" beside Controller, how many browsers are connected, and each list's count. The window can be resized, never below about 680 × 460 pt (more with larger text), and remembers its size, place and last section; its title follows the section.
+Settings has a sidebar of sections in two groups, **Mixer** (General, Controller, Browsers) and **Sources** (App groups, Mute list, Ignore list), then About on its own. The groups always stay open, with a thin line between them. Names only, with a status beside them where it helps: how many browsers are connected, and each list's count. Controller has none: working without one is fine. The window can be resized, never below about 680 × 460 pt (more with larger text), and remembers its size, place and last section; its title follows the section.
 
 **The three lists work like a Finder list.** Each sits in a rounded box only as tall as its entries, and scrolls only once the window can't show them all; an empty list says so in the box. Click a column title to sort. Click, ⌘-click, ⇧-click, the arrow keys or ⌘A select, and Delete or **Remove** removes the selection; ⌘Z brings it back. A double-click or Return edits an entry in place: Return saves and Esc goes back. **Add…** opens a sheet with Cancel and Add, which stays dimmed until the entry can be used, with a message for a duplicate or a typo; a pasted web address becomes its website. On the mute and ignore lists, **Move to Ignore list** or **Move to Mute list** moves the selection. Remove and Move are dimmed until a row is selected. A filter appears once a list has more than 8 entries.
 
 | Setting | Default |
 | --- | --- |
-| Use fader 1 as master volume | Off; greyed out when the output device sets its volume in hardware |
-| Controller | Novation Launch Control XL mk2; alternatives: Mackie Control (experimental) and any MIDI controller (MIDI learn), with a device picker |
+| Use fader 1 as master volume (with a controller) | Off; greyed out when the output device sets its volume in hardware |
+| Use channel 1 as master volume (without a controller) | On; greyed out the same way. Only the setting for the current state shows |
+| Controller | Novation Launch Control XL mk2; alternatives: Mackie Control (experimental) and any MIDI controller (MIDI learn), with a device picker. Without one connected: "No controller connected. The mixer works from its window and the menu bar." |
+| Holding play on Spotify | Add to Liked Songs; alternative: Reload the tab |
 | Volume curve | Natural (gentle at the low end); alternative: linear. A small graph shows how loud each fader position sounds |
 | Text size | Default; Smaller, Larger and Largest scale the mixer window, panel, pop-up and Settings. ⌘− / ⌘+ / ⌘0 in the mixer window and Settings |
 | Launch at login | On |
@@ -328,7 +337,7 @@ Settings has a sidebar of sections in two groups, **Mixer** (General, Controller
 
 **Not remembered across restarts, by design:** manual unassigns. A source you unassigned is treated as new after a restart.
 
-**Settings version:** from v2.2 the saved settings carry a version number (1). Settings from 2.1.1 and earlier have none; they're kept exactly as they are and get the number. A release that changes how something is saved raises the number and adds a step that upgrades older settings, instead of guessing. Settings saved by a newer build are left alone.
+**Settings version:** from v2.2 the saved settings carry a version number (1). Settings from 2.1.1 and earlier have none; they're kept exactly as they are and get the number. A release that changes how something is saved raises the number and adds a step that upgrades older settings, instead of guessing. Settings saved by a newer build are left alone. 2.4 adds two settings with defaults and changes nothing already saved, so the number stays at 1.
 
 ## Edge cases and failure handling
 
@@ -336,7 +345,8 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 
 | Situation | Behaviour |
 | --- | --- |
-| Controller unplugged, then plugged back in | Window and panel show "Not connected"; the menu-bar icon gets its slash. On reconnect, LEDs are refreshed and all faders start detached |
+| Controller unplugged, then plugged back in | Back within 5 s: nothing changes. After that the mixer carries on without it: "Audio mixer active", channels close up (rule 8), the panel gets sliders. On reconnect the order is kept, LEDs are refreshed and all faders start detached |
+| Spotify can't add a song (an ad, a podcast, signed out, a changed player, no answer within 2 s) | The pop-up says "Can't add this to Liked Songs"; nothing else happens |
 | Mixer app restarts while media keeps playing | Each source that is still open goes back to its old channel; the fader needs one touch to pick it up again, as the faders aren't motorised |
 | Mixer app quits or crashes | Media keeps playing without a jump. Native apps go back to their own volume, so none stays muted; browser tabs keep the volume and mute state they had (verified in testing). A microphone the app muted is unmuted |
 | Browser not running, or extension missing | Tabs simply don't appear. If a supported browser runs but no extension connects, the header says so with a fix-it link; Settings → Browsers shows each browser's state |
@@ -346,7 +356,7 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 | Output device switched (audio interface ↔ AirPods) | Native sources keep playing on the new device at the same volumes; master mode availability updates |
 | A grouped app opens a new helper process | It joins its group's channel instead of taking a new one |
 | A site changes its page and an adapter breaks | That channel falls back to "Mute only", and the channel names the site that needs an adapter fix |
-| The extension updates while tabs are open | Each open tab's new page script takes over its players without a reload. The extension re-injects into tabs that never report back (twice), and if an audible tab still finds no player within a minute of the update, its channel shows "Reload tab" and its play LED blinks amber: click it, or hold play for 3 s |
+| The extension updates while tabs are open | Each open tab's new page script takes over its players without a reload. The extension re-injects into tabs that never report back (twice), and if an audible tab still finds no player within a minute of the update, its channel shows "Reload tab" and its play LED blinks amber: click it, or hold play for 2 s |
 | Audio-capture permission denied | Native apps show in Unassigned as "Permission needed", with a button that opens the right System Settings page. Browser tabs keep working |
 | Incognito tabs | Ignored unless you allow the extension in incognito |
 | Tab moved to another window or screen | Keeps its channel and all controls: the browser keeps the same tab ID when a tab is dragged between windows |
@@ -435,6 +445,24 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [ ] Lists: only as tall as their entries, empty state, values centred in their rows; Add sheet (Return, Esc, a pasted address), editing in place (double-click, Return, Esc), selection (click, ⌘, ⇧, arrows, ⌘A), Remove and Move dimmed until a selection, Delete, ⌘Z, sorting, the filter past 8 entries
 - [ ] VoiceOver through Settings and the tabs; largest text size
 
+**v2.4 test checklist**
+
+- [x] All Swift and extension tests pass
+- [x] Media and Microphone buttons turn solid red while on, also in a background window; VoiceOver reads them as toggles
+- [x] Settings → Controller shows Holding play on Spotify; General shows the master setting for the current state
+- [ ] Unplug the controller: after about 5 s "Audio mixer active" and the channels close up; a quick unplug and replug changes nothing
+- [ ] Closing a tab between two others: the ones below move up once the pointer leaves the window or panel, not before
+- [ ] Without a controller the panel lists only occupied channels, each with a slider, or "Nothing playing"
+- [ ] Plugging the controller back in keeps the order; the panel shows 8 rows with percentages; closing a tab leaves a Free channel
+- [ ] On the MacBook speakers channel 1 becomes Master and sources move down one; on the Scarlett it stays a normal channel
+- [ ] A short press plays and pauses; a 2 s hold on YouTube reloads, with the hint after 1 s
+- [ ] A 2 s hold on Spotify: "Added to Liked Songs"; again: "Already in Liked Songs", still liked; an ad or a podcast: "Can't add this to Liked Songs"
+- [ ] With Holding play on Spotify set to Reload the tab, the hold reloads Spotify; an amber "Reload tab" Spotify tab reloads on a hold
+- [ ] Panel drag and drop: swap, onto a Free row, from Unassigned, "Add to the end" without a controller, dropping outside cancels and the panel stays open
+- [ ] Right-click a panel row: Move to channel (one "Free" entry without a controller), Bring to the front, Unassign, Always mute; also with VoiceOver
+- [ ] VoiceOver reads the panel sliders ("Spotify, channel 2, volume 45%"); Reduce Motion: strips and rows close up in place
+- [ ] Benchmark: no change with the windows closed
+
 ## Testing, logging and auditing
 
 **Automated tests** (since v2.2) run with `./scripts/test.sh` or a double-click on **Test LCX Mixer.command**, and on every push in CI.
@@ -467,6 +495,7 @@ A menu-bar utility should cost next to nothing while it sits in the background.
 - **Tap only when needed.** A native app at 100% and unmuted plays untouched. With the windows closed, that means no tap at all: no audio work and no purple dot. While the mixer window or panel is open, an app that's playing gets a tap that only listens, for its meter. It's released 2 s after the app goes quiet or the last meter leaves the screen. A tap takes over the volume when it goes below 100% or the app is muted (crossfading from listening, if it was), and goes back to listening, or away, 2 s after the volume is back at 100%.
 - **Crossfaded hand-over.** A new tap starts with the app's own sound still playing; once ours flows, the original is muted and ours fades in over 20 ms. Releasing does the reverse. If macOS doesn't allow changing a running tap's mute, it switches straight over with a short fade instead.
 - **Audio on the device's own thread.** A tap's audio is processed directly on the output device's real-time thread (already in its audio workgroup), with no extra thread hop, no memory allocation and no locks; level measuring is off while no meter is visible.
+- **No polling for the controller.** A controller coming and going is noticed through MIDI notifications, the 5 s wait is a single timer that runs only after a disconnect, and the pointer over the window or panel is tracked through hover events. The panel's sliders draw only while it's open.
 - **Quiet extension.** Tab scripts find players as they start instead of scanning every 2 s; the background worker checks in every 5 s.
 
 Measured on an Apple silicon MacBook with Spotify, YouTube and Twitch playing and League on a channel (CPU, 100% = one core):
@@ -509,6 +538,3 @@ Open source under the MIT licence (© 2026 Blaženko Davidović), shared as sour
 - Safari and Firefox tab control through their own extensions.
 - Per-channel output routing, such as Discord to headphones and Spotify to the monitors.
 - Scenes (saved sets of volumes), ducking, and volume boost above 100%.
-- Drag-and-drop channels in the menu-bar panel, so moving a channel doesn't need the mixer window.
-- Holding play on a Spotify channel adds the song to Liked Songs instead of reloading the tab (a setting, on by default); when there's nothing to like, such as an ad or a podcast, the pop-up says it can't be added and nothing else happens. The hold for every reload drops from 3 s to 2 s.
-- Working without a controller: with no controller or MIDI device present, channels close up when a source leaves, so there are no gaps; channel 1 is master volume by default; the window header says "Audio mixer active"; the menu-bar panel lists only occupied channels, each with a volume slider. Nothing calls it a separate mode. The panel also drops its "Controller connected" line, and the window and panel get buttons for mute all media and the microphone.
