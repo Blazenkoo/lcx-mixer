@@ -180,7 +180,7 @@ final class ProcessTap {
 
         let description = CATapDescription(stereoMixdownOfProcesses: processObjects)
         description.uuid = UUID()
-        description.name = "LCX Mixer tap"
+        description.name = "Media Mixer tap"
         description.isPrivate = true
         description.muteBehavior = (seamless || listenOnly) ? .unmuted : .mutedWhenTapped
         self.description = description
@@ -208,7 +208,7 @@ final class ProcessTap {
         state.sampleRate = Float(CA.get(outputDevice, kAudioDevicePropertyNominalSampleRate, default: Float64(48000)))
 
         let aggregate: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "LCX Mixer",
+            kAudioAggregateDeviceNameKey: "Media Mixer",
             kAudioAggregateDeviceUIDKey: "lcxmixer-" + UUID().uuidString,
             kAudioAggregateDeviceMainSubDeviceKey: outputUID,
             kAudioAggregateDeviceIsPrivateKey: true,

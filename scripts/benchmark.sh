@@ -1,5 +1,5 @@
 #!/bin/bash
-# Measures how much CPU and memory the running LCX Mixer uses, the way the numbers in
+# Measures how much CPU and memory the running Media Mixer uses, the way the numbers in
 # docs/SPEC.md (Performance) were taken: macOS's `top`, one sample every 2 seconds.
 #
 # Usage: ./scripts/benchmark.sh <state> [seconds]
@@ -19,14 +19,14 @@ if [ -z "$state" ]; then
 fi
 
 # The app itself, not the small bridge processes the browsers start (same executable, other path).
-pid="$(pgrep -f "LCX Mixer.app/Contents/MacOS/LCXMixer$" | head -1 || true)"
+pid="$(pgrep -f "Mixer.app/Contents/MacOS/LCXMixer$" | head -1 || true)"
 if [ -z "$pid" ]; then
-  echo "LCX Mixer isn't running." >&2
+  echo "Media Mixer isn't running." >&2
   exit 1
 fi
 
 samples=$(( seconds / 2 + 1 ))
-echo "Sampling LCX Mixer (pid $pid) for $seconds s as \"$state\"..." >&2
+echo "Sampling Media Mixer (pid $pid) for $seconds s as \"$state\"..." >&2
 
 top -l "$samples" -s 2 -pid "$pid" -stats pid,cpu,mem 2>/dev/null | awk -v pid="$pid" -v state="$state" '
   # Memory as top prints it (e.g. 36M, 4145K, 1.2G, with a trailing + or -), in MB.
@@ -47,6 +47,6 @@ top -l "$samples" -s 2 -pid "$pid" -stats pid,cpu,mem 2>/dev/null | awk -v pid="
     mem = megabytes($3)
   }
   END {
-    if (n == 0) { print "No samples: did LCX Mixer quit?" > "/dev/stderr"; exit 1 }
+    if (n == 0) { print "No samples: did Media Mixer quit?" > "/dev/stderr"; exit 1 }
     printf "| %s | %.1f%% | %.1f%% | %.0f MB | %d |\n", state, cpu / n, peak, mem, n
   }'

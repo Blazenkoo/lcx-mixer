@@ -85,7 +85,7 @@ enum BridgeHost {
             close(fd)
             return -1
         }
-        // Make sure the listener really is the LCX Mixer app before relaying Chrome's messages.
+        // Make sure the listener really is the Media Mixer app before relaying Chrome's messages.
         guard PeerVerifier.isTrustedPeer(fd) else {
             close(fd)
             return -1

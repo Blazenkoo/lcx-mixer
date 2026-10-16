@@ -1,8 +1,10 @@
-# LCX Mixer — Specification (as built)
+# Media Mixer — Specification (as built)
 
-This is the product specification LCX Mixer was built from, kept up to date with what is built. For build and install steps, see the [README](../README.md).
+Media Mixer was called LCX Mixer before 2.4.
 
-**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2.0 code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual · v2.0.1 performance: nothing draws while it can't be seen, lighter background checks · v2.1 event-driven: the app sleeps until something changes, and native apps at 100% play untouched · v2.1.1 crossfaded hand-over when a tap starts or ends · v2.2 foundation, nothing new to see or hear: the mixer core split into parts, one extension file per site, automated tests, unified logging and performance markers, CI and code scanning, a security policy, and a version on saved settings. Also: real level meters for native apps at 100% while the mixer is open, mute-listed sources on one quiet line instead of in Unassigned, and copy and paste in text fields · v2.3 Unassigned and Muted tabs with their counts, a muted source that tries to play is pointed out, activity drops stay below the volume and real meters follow the fader's scale, Settings with a sidebar and editable lists, a proper Settings button · v2.4 works without a controller (channels close up, channel 1 is master volume, a volume slider per channel in the menu-bar panel), Media and Microphone buttons on screen, drag and drop in the menu-bar panel, a 2-second hold on play, and Liked Songs on Spotify.
+This is the product specification Media Mixer was built from, kept up to date with what is built. For build and install steps, see the [README](../README.md).
+
+**Versions:** v1.0 first release · v1.1 layout restored after a restart, channels moved by drag or right-click · v2.0 code restructured into source providers and controller drivers, other Chromium browsers, mute list, microphone mute, Twitch slider fix, dim green LEDs for native apps, text size, a volume-curve graph, any MIDI controller through MIDI learn, the mixer window opening on launch, Mackie Control (experimental), a welcome window and About with the animated visual · v2.0.1 performance: nothing draws while it can't be seen, lighter background checks · v2.1 event-driven: the app sleeps until something changes, and native apps at 100% play untouched · v2.1.1 crossfaded hand-over when a tap starts or ends · v2.2 foundation, nothing new to see or hear: the mixer core split into parts, one extension file per site, automated tests, unified logging and performance markers, CI and code scanning, a security policy, and a version on saved settings. Also: real level meters for native apps at 100% while the mixer is open, mute-listed sources on one quiet line instead of in Unassigned, and copy and paste in text fields · v2.3 Unassigned and Muted tabs with their counts, a muted source that tries to play is pointed out, activity drops stay below the volume and real meters follow the fader's scale, Settings with a sidebar and editable lists, a proper Settings button · v2.4 renamed Media Mixer; works without a controller (channels close up, channel 1 is master volume, a volume slider per channel in the menu-bar panel), Output and Input pickers with Media and Microphone buttons on screen, drag and drop in the menu-bar panel, a 2-second hold on play, and Liked Songs on Spotify.
 
 ## Contents
 
@@ -47,7 +49,7 @@ A small macOS menu-bar app, paired with a browser extension, turns the Launch Co
 
 ## Architecture
 
-![The LCX Mixer window with four sources on channels 1–4](images/mixer-window.png)
+![The Media Mixer window with four sources on channels 1–4](images/mixer-window.png)
 
 The Mac app is the hub: it owns the controller, the native-app audio and all state. The browser extension is its hands inside each browser. Inside the app, source providers and controller drivers plug into one small mixer core, so new browsers and controllers don't touch the core.
 
@@ -56,7 +58,7 @@ flowchart LR
     LCXL["Launch Control XL mk2"] <-->|"Core MIDI<br/>faders, knobs, buttons, LEDs"| DRIVER
     NATIVE["Native apps<br/>(League, Discord, Music…)"] -->|"Core Audio process taps"| NATIVEP
 
-    subgraph APP["LCX Mixer (macOS app)"]
+    subgraph APP["Media Mixer (macOS app)"]
         direction TB
         DRIVER["Controller driver<br/>(Launch Control XL, Mackie Control or MIDI learn)"]
         NATIVEP["Native-app provider"]
@@ -121,7 +123,7 @@ A source is either one native app (or app group) or one browser tab. A new sourc
 5. **A channel frees:** the source that has waited longest in the unassigned list takes it. Sources you unassigned yourself don't count as waiting.
 6. **No reshuffling with a controller:** channels are never reordered or compacted automatically. Drag-and-drop is the only way to move a source to a different channel. Without a controller, see rule 8.
 7. **After a restart:** sources that are still open when the app starts again go back to the channels they had, including a paused tab that held one. Each of those channels is held for 10 seconds; a source that hasn't come back by then gives its channel to whatever is waiting. New sources take other free channels in the meantime, and your own Assign and drag can use any free channel.
-8. **Without a controller:** once no Launch Control XL, Mackie surface or MIDI-learn device has been connected for 5 s (so a loose cable changes nothing), channels close up. When a source leaves its channel (its tab closes, its app quits, you click ×, you choose Always mute, or master takes channel 1), every source below moves up one, in order, and a waiting source joins at the end. Pausing or silence still never frees a channel. Nothing moves while the pointer is over the mixer window or the panel; it happens once the pointer leaves, and meanwhile a waiting source takes the gap straight away. Dropping a source on a free channel puts it right after the last occupied one, and **Move to channel** offers the free channels as one entry. After a restart the channels come back in order, closing up when the 10-second hold ends. Plugging a controller in keeps the order; from then on rule 6 applies. Nothing in the app calls this a mode.
+8. **Without a controller:** once no Launch Control XL, Mackie surface or MIDI-learn device has been connected for 2 s (so a loose cable changes nothing), channels close up. When a source leaves its channel (its tab closes, its app quits, you click ×, you choose Always mute, or master takes channel 1), every source below moves up one, in order, and a waiting source joins at the end. Pausing or silence still never frees a channel. Nothing moves while the pointer is over the mixer window or the panel; it happens once the pointer leaves, and meanwhile a waiting source takes the gap straight away. Dropping a source on a free channel puts it right after the last occupied one, and **Move to channel** offers the free channels as one entry. After a restart the channels come back in order, closing up when the 10-second hold ends. Plugging a controller in keeps the order; from then on rule 6 applies. Nothing in the app calls this a mode.
 
 ## Unassigned sources, the mute list and the ignore list
 
@@ -238,7 +240,7 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 
 - Starting the app yourself, including after Quit, opens the mixer window. Starting at login keeps it in the menu bar.
 - The window always fits its content: exactly eight strips wide, and as tall as what's inside. It isn't resized by hand; changing the text size resizes it, keeping its top-left corner in place.
-- While the app is in the Dock, the menu bar shows the standard LCX Mixer, Edit and Window menus. Their shortcuts work in every LCX Mixer window either way: ⌘C, ⌘V, ⌘X, ⌘A and ⌘Z in text fields, ⌘W to close, ⌘, for Settings and ⌘Q to quit.
+- While the app is in the Dock, the menu bar shows the standard Media Mixer, Edit and Window menus. Their shortcuts work in every Media Mixer window either way: ⌘C, ⌘V, ⌘X, ⌘A and ⌘Z in text fields, ⌘W to close, ⌘, for Settings and ⌘Q to quit.
 
 **Welcome window and About**
 
@@ -249,11 +251,11 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 
 **Header and footer**
 
-- **Header, one row:** "Launch Control XL connected" (the controller's name), or "Audio mixer active" without one │ **Output**, the output picker and the **Media** button │ **Input**, the input picker and the **Microphone** button │ the Settings button on the right. Thin dividers separate the three groups.
+- **Header, one row:** "Launch Control XL connected" (the controller's name), or "Media mixer active" without one │ **Output**, the output picker and the **Media** button │ **Input**, the input picker and the **Microphone** button │ the Settings button on the right. Thin dividers separate the three groups.
 - **Output and Input pickers:** list the Mac's output or input devices as Sound settings does (hidden devices and the app's own tap devices left out), by name, with the current one ticked. Choosing one switches the Mac's output or input for everything, the same as Sound settings. Changes made elsewhere (Control Centre, AirPods, unplugging an interface) show within a second; master mode and the Microphone button follow. Each picker is as wide as its device's name, up to 220 pt, then cut short with "…" (full name on hover and for VoiceOver). macOS draws pop-up menus lower than the app's buttons, so the picker's button is drawn like them, with a chevron, and opens the standard macOS menu.
 - **Media and Microphone buttons** (in the header's Output and Input groups, and the panel's top line): mute all media and the selected microphone, like the controller's Mute and Solo and in step with them. Each is an icon with its label, solid red while on, read by VoiceOver as an on/off toggle. Microphone is dimmed, with "Can't be muted by apps", when the current input can't be muted.
 - **Below the strips:** the Unassigned and Muted tabs (see above), with the same space above the strips as below them.
-- **Settings** opens from the Settings button in the header, a bordered button like the strips' own, or with ⌘,.
+- **Settings** opens from the Settings button (a gear and its label) at the right of the header, or with ⌘,.
 
 ## Menu-bar icon, panel and on-screen pop-up
 
@@ -309,7 +311,7 @@ The controller LEDs, the window and the menu-bar panel use the same four colours
 
 ## Settings and what is remembered
 
-Settings has a sidebar of sections in two groups, **Mixer** (General, Controller, Browsers) and **Sources** (App groups, Mute list, Ignore list), then About on its own. The groups always stay open, with a thin line between them. Names only, with a status beside them where it helps: how many browsers are connected, and each list's count. Controller has none: working without one is fine. The window can be resized, never below about 680 × 460 pt (more with larger text), and remembers its size, place and last section; its title follows the section.
+General opens with **Output** and **Input**: the device pickers and the mute switches, the same as the window header. Settings has a sidebar of sections in two groups, **Mixer** (General, Controller, Browsers) and **Sources** (App groups, Mute list, Ignore list), then About on its own. The groups always stay open, with a thin line between them. Names only, with a status beside them where it helps: how many browsers are connected, and each list's count. Controller has none: working without one is fine. The window can be resized, never below about 680 × 460 pt (more with larger text), and remembers its size, place and last section; its title follows the section.
 
 **The three lists work like a Finder list.** Each sits in a rounded box only as tall as its entries, and scrolls only once the window can't show them all; an empty list says so in the box. Click a column title to sort. Click, ⌘-click, ⇧-click, the arrow keys or ⌘A select, and Delete or **Remove** removes the selection; ⌘Z brings it back. A double-click or Return edits an entry in place: Return saves and Esc goes back. **Add…** opens a sheet with Cancel and Add, which stays dimmed until the entry can be used, with a message for a duplicate or a typo; a pasted web address becomes its website. On the mute and ignore lists, **Move to Ignore list** or **Move to Mute list** moves the selection. Remove and Move are dimmed until a row is selected. A filter appears once a list has more than 8 entries.
 
@@ -346,7 +348,7 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 
 | Situation | Behaviour |
 | --- | --- |
-| Controller unplugged, then plugged back in | Back within 5 s: nothing changes. After that the mixer carries on without it: "Audio mixer active", channels close up (rule 8), the panel gets sliders. On reconnect the order is kept, LEDs are refreshed and all faders start detached |
+| Controller unplugged, then plugged back in | Back within 2 s: nothing changes. After that the mixer carries on without it: "Media mixer active", channels close up (rule 8), the panel gets sliders. On reconnect the order is kept, LEDs are refreshed and all faders start detached |
 | Spotify can't add a song (an ad, a podcast, signed out, a changed player, no answer within 2 s) | The pop-up says "Can't add this to Liked Songs"; nothing else happens |
 | Mixer app restarts while media keeps playing | Each source that is still open goes back to its old channel; the fader needs one touch to pick it up again, as the faders aren't motorised |
 | Mixer app quits or crashes | Media keeps playing without a jump. Native apps go back to their own volume, so none stays muted; browser tabs keep the volume and mute state they had (verified in testing). A microphone the app muted is unmuted |
@@ -375,7 +377,7 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 
 **Install, in this order**
 
-1. Double-click **Build LCX Mixer.command** (or run `scripts/build.sh`). It builds the app, signs it with an "Apple Development" certificate if one exists, installs it to Applications and launches it. With a certificate, the audio permission survives rebuilds.
+1. Double-click **Build Media Mixer.command** (or run `scripts/build.sh`). It builds the app, signs it with an "Apple Development" certificate if one exists, installs it to Applications and launches it. With a certificate, the audio permission survives rebuilds.
 2. On launch, the app registers its bridge with every supported browser it finds and copies the extension to `~/Library/Application Support/LCXMixer/ChromeExtension`.
 3. In each browser: its extensions page (`chrome://extensions`, `edge://extensions`, …) → Developer mode → Load unpacked → that folder. Loaded from there, it updates itself after every rebuild, and the app warns you if a browser uses a different copy.
 4. Connect the controller. The app switches it to Factory Template 1 on its own.
@@ -451,7 +453,7 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [x] All Swift and extension tests pass
 - [x] Media and Microphone buttons turn solid red while on, also in a background window; VoiceOver reads them as toggles
 - [x] Settings → Controller shows Holding play on Spotify; General shows the master setting for the current state
-- [x] Unplug the controller: after about 5 s "Audio mixer active" and the channels close up; a quick unplug and replug changes nothing
+- [x] Unplug the controller: after about 2 s (5 s when tested) "Media mixer active" and the channels close up; a quick unplug and replug changes nothing
 - [x] Closing a tab between two others: the ones below move up once the pointer leaves the window or panel, not before
 - [x] Without a controller the panel lists only occupied channels, each with a slider, or "Nothing playing"
 - [x] Plugging the controller back in keeps the order; the panel shows 8 rows with percentages; closing a tab leaves a Free channel
@@ -467,12 +469,14 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [ ] VoiceOver reads the panel sliders ("Spotify, channel 2, volume 45%"); Reduce Motion: strips and rows close up in place
 - [ ] Benchmark: no change with the windows closed
 - [x] The header in one row that lines up: status, Output picker and Media, Input picker and Microphone, Settings; pickers as wide as their names
-- [ ] Switching output and input from the pickers, and from Control Centre (the pickers follow); the header at every text size
-- [ ] Panel: "Mute:" label and the separator above the channels
+- [x] Switching output and input from the pickers, and from Control Centre (the pickers follow); the header at every text size
+- [x] Panel: "Mute:" label and the separator above the channels
+- [ ] Settings → General: Output and Input on top; the Settings button with its label
+- [ ] The rename: Media Mixer in the menus, the Dock, About, the menu-bar tooltip, the browser's extensions page; "Media mixer active" without a controller; LCX Mixer.app moved to the Trash by the build; launch at login and the audio permission still work
 
 ## Testing, logging and auditing
 
-**Automated tests** (since v2.2) run with `./scripts/test.sh` or a double-click on **Test LCX Mixer.command**, and on every push in CI.
+**Automated tests** (since v2.2) run with `./scripts/test.sh` or a double-click on **Test Media Mixer.command**, and on every push in CI.
 
 - **Swift tests** (`swift test`, about 125, in a few seconds): channel assignment and the layout after a restart, fader takeover, the knobs, the fader curve, the mute and ignore lists, tab merging, lights, MIDI parsing, the Launch Control XL and Mackie Control maps, MIDI learn and the settings version. They drive the mixer core with a stand-in controller and a throwaway settings store, so they never touch your real settings, audio or MIDI. Each part of the core also has tests of its own.
 - **Extension tests** (`node --test Tests/extension/*.test.mjs`, needs Node.js): the page scripts run in a pretend page with fake versions of each site's controls, including a take-over by a newer extension build, the case that broke in 2.1.
@@ -502,7 +506,7 @@ A menu-bar utility should cost next to nothing while it sits in the background.
 - **Tap only when needed.** A native app at 100% and unmuted plays untouched. With the windows closed, that means no tap at all: no audio work and no purple dot. While the mixer window or panel is open, an app that's playing gets a tap that only listens, for its meter. It's released 2 s after the app goes quiet or the last meter leaves the screen. A tap takes over the volume when it goes below 100% or the app is muted (crossfading from listening, if it was), and goes back to listening, or away, 2 s after the volume is back at 100%.
 - **Crossfaded hand-over.** A new tap starts with the app's own sound still playing; once ours flows, the original is muted and ours fades in over 20 ms. Releasing does the reverse. If macOS doesn't allow changing a running tap's mute, it switches straight over with a short fade instead.
 - **Audio on the device's own thread.** A tap's audio is processed directly on the output device's real-time thread (already in its audio workgroup), with no extra thread hop, no memory allocation and no locks; level measuring is off while no meter is visible.
-- **No polling for the controller.** A controller coming and going is noticed through MIDI notifications, the 5 s wait is a single timer that runs only after a disconnect, and the pointer over the window or panel is tracked through hover events. The panel's sliders draw only while it's open.
+- **No polling for the controller.** A controller coming and going is noticed through MIDI notifications, the 2 s wait is a single timer that runs only after a disconnect, and the pointer over the window or panel is tracked through hover events. The panel's sliders draw only while it's open.
 - **Quiet extension.** Tab scripts find players as they start instead of scanning every 2 s; the background worker checks in every 5 s.
 
 Measured on an Apple silicon MacBook with Spotify, YouTube and Twitch playing and League on a channel (CPU, 100% = one core):
@@ -513,20 +517,20 @@ Measured on an Apple silicon MacBook with Spotify, YouTube and Twitch playing an
 | Mixer window visible | ~56% · 266 MB | ~13% · 200 MB | ~13% · 194 MB | ~25% · 208 MB |
 | Mixer and About visible | ~56% | ~30% · 220 MB | ~30% | not measured |
 
-For v2.2, all four sources were playing and League was turned down to 32%, so every meter on screen was moving. With the window open, it redraws 30 times a second; a profile shows that time going into SwiftUI and macOS drawing the window, with almost none in LCX Mixer's own code, the new listening taps included. The earlier columns weren't necessarily measured with every source active, so the two rows above aren't a like-for-like comparison.
+For v2.2, all four sources were playing and League was turned down to 32%, so every meter on screen was moving. With the window open, it redraws 30 times a second; a profile shows that time going into SwiftUI and macOS drawing the window, with almost none in Media Mixer's own code, the new listening taps included. The earlier columns weren't necessarily measured with every source active, so the two rows above aren't a like-for-like comparison.
 
 **Measuring it yourself:** `./scripts/benchmark.sh <state> [seconds]` samples the running app with `top` every 2 s (for 5 minutes unless told otherwise) and prints a row with its average and highest CPU and its memory. Set things up first (sources playing, the window you want open), then leave the Mac alone while it runs.
 
 ## Security
 
-LCX Mixer has no network attack surface: no server, no web app, nothing listening on the network. Everything stays on the Mac. This was a deliberate design constraint: a live web component would add an attack vector for no benefit to the user.
+Media Mixer has no network attack surface: no server, no web app, nothing listening on the network. Everything stays on the Mac. This was a deliberate design constraint: a live web component would add an attack vector for no benefit to the user.
 
 - **Browser ↔ app:** the browser's native messaging, which it allows only for the one extension ID listed in the app's host manifest.
 - **Bridge ↔ app:** a local socket file in a folder only your user account can open (`0700`). The socket file itself is user-only (`0600`).
 - **Both ends verify each other:** a connection is accepted only if the other process runs under the same user account and is signed with the app's own code signature. A fake listener or another program can't send or receive mixer commands.
 - **MIDI:** the app only reads from the controller you choose and sends light messages only to it (none with MIDI learn). MIDI learn assignments are stored locally.
 - **Permissions:** only System audio recording, used to control the volume of apps on a channel. No microphone or accessibility permissions: microphone mute only changes the input device's mute or volume setting. The app makes no network requests at all; site icons come from the browser's local icon cache.
-- **Purple menu-bar dot:** while a native app's volume is below 100% or it's muted, or while the mixer window or panel shows native apps' meters, macOS shows its purple system-audio-recording indicator, naming LCX Mixer in Control Center. It is expected and explained in the README; browser tabs never trigger it.
+- **Purple menu-bar dot:** while a native app's volume is below 100% or it's muted, or while the mixer window or panel shows native apps' meters, macOS shows its purple system-audio-recording indicator, naming Media Mixer in Control Center. It is expected and explained in the README; browser tabs never trigger it.
 - **Logs** stay in macOS's unified log on the Mac, with anything that could identify you marked private.
 
 How to report a security problem, the full list of what the app exposes, and the three undocumented macOS functions it uses: [SECURITY.md](../SECURITY.md).

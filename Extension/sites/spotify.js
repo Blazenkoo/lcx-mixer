@@ -48,11 +48,11 @@
           }
         }
       } catch (e) {
-        console.debug('[LCX Mixer] Spotify volume failed', e);
+        console.debug('[Media Mixer] Spotify volume failed', e);
       }
       if (!methodLogged) {
         methodLogged = true;
-        console.debug('[LCX Mixer] Spotify volume method:', method);
+        console.debug('[Media Mixer] Spotify volume method:', method);
       }
       return method !== 'none';
     }

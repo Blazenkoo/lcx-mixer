@@ -121,7 +121,7 @@ struct HeaderStatus: View {
         HStack(spacing: 12 * scale) {
             // Without a controller the mixer simply works on screen; nothing calls it a mode.
             Label {
-                Text(core.hardwarePresent ? "\(core.controllerName) connected" : "Audio mixer active")
+                Text(core.hardwarePresent ? "\(core.controllerName) connected" : "Media mixer active")
             } icon: {
                 Circle().fill(Color.green).frame(width: 7 * scale, height: 7 * scale)
             }
@@ -162,7 +162,7 @@ struct HeaderStatus: View {
                 }
                 .buttonStyle(.link)
                 .foregroundStyle(Color.warningText)
-                .help("On the browser's extensions page remove LCX Mixer, then Load unpacked from this folder so it updates itself")
+                .help("On the browser's extensions page remove Media Mixer, then Load unpacked from this folder so it updates itself")
             }
             if core.permissionStatus == .denied {
                 Button {

@@ -1,6 +1,6 @@
 # Security
 
-LCX Mixer runs entirely on your Mac. It has no server, no web app, no account and no telemetry, and it makes no network requests. That's a deliberate design rule: a live web component would add a way in for attackers and give users nothing in return.
+Media Mixer runs entirely on your Mac. It has no server, no web app, no account and no telemetry, and it makes no network requests. That's a deliberate design rule: a live web component would add a way in for attackers and give users nothing in return.
 
 ## Reporting a problem
 

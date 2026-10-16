@@ -1,6 +1,6 @@
 import AppKit
 
-/// The app's menu bar. It's visible only while LCX Mixer is in the Dock (the mixer window is open,
+/// The app's menu bar. It's visible only while Media Mixer is in the Dock (the mixer window is open,
 /// or "Always in Dock" is on), but its keyboard shortcuts work in every window either way. Without
 /// an Edit menu, ⌘C, ⌘V and the other editing shortcuts have nothing to call, and text fields
 /// only beep.
@@ -11,18 +11,18 @@ enum MainMenu {
     static func install(target: AnyObject, about: Selector, settings: Selector) {
         let main = NSMenu()
 
-        let app = NSMenu(title: "LCX Mixer")
-        app.addItem(item("About LCX Mixer", about, target: target))
+        let app = NSMenu(title: "Media Mixer")
+        app.addItem(item("About Media Mixer", about, target: target))
         app.addItem(.separator())
         app.addItem(item("Settings…", settings, key: ",", target: target))
         app.addItem(.separator())
-        app.addItem(item("Hide LCX Mixer", #selector(NSApplication.hide(_:)), key: "h"))
+        app.addItem(item("Hide Media Mixer", #selector(NSApplication.hide(_:)), key: "h"))
         let hideOthers = item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), key: "h")
         hideOthers.keyEquivalentModifierMask = [.command, .option]
         app.addItem(hideOthers)
         app.addItem(item("Show All", #selector(NSApplication.unhideAllApplications(_:))))
         app.addItem(.separator())
-        app.addItem(item("Quit LCX Mixer", #selector(NSApplication.terminate(_:)), key: "q"))
+        app.addItem(item("Quit Media Mixer", #selector(NSApplication.terminate(_:)), key: "q"))
         main.addItem(submenu(app))
 
         let edit = NSMenu(title: "Edit")

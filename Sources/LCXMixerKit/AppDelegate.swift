@@ -154,7 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func updateStatusIcon() {
         // No slash for a missing controller: without one, the mixer works on screen.
         statusItem?.button?.image = StatusIcon.make(connected: true, muteAll: core.muteAll, micMuted: core.micMuted)
-        var tip = "LCX Mixer"
+        var tip = "Media Mixer"
         if core.micMuted { tip += " · microphone muted" }
         statusItem?.button?.toolTip = tip
     }
@@ -184,7 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "LCX Mixer"
+            window.title = "Media Mixer"
             window.isReleasedWhenClosed = false
             let content = NSHostingController(rootView: ScaledRoot(settings: settings, shortcuts: true) {
                 MixerWindowView(
@@ -369,7 +369,7 @@ enum StatusIcon {
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = "LCX Mixer, microphone muted"
+        image.accessibilityDescription = "Media Mixer, microphone muted"
         return image
     }
 

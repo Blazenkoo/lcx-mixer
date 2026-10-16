@@ -253,6 +253,38 @@ private struct GeneralPage: View {
 
     var body: some View {
         Form {
+            // The same devices and mutes as the mixer window's header.
+            Section {
+                Picker(selection: Binding(get: { core.outputDeviceID }, set: { core.selectOutput($0) })) {
+                    ForEach(core.outputDevices) { d in Text(d.name).tag(d.id) }
+                } label: {
+                    SettingLabel(title: "Output device", description: "Where the Mac plays sound, the same as in Sound settings.")
+                }
+                Toggle(isOn: Binding(get: { core.muteAll }, set: { _ in core.toggleMuteAll() })) {
+                    SettingLabel(title: "Mute all media", description: "Everything playing through the mixer. System sounds and calls still play.")
+                }
+            } header: {
+                VStack(alignment: .leading, spacing: 10 * scale) {
+                    PageHeader(title: "General")
+                    GroupTitle(title: "Output")
+                }
+            }
+
+            Section {
+                Picker(selection: Binding(get: { core.inputDeviceID }, set: { core.selectInput($0) })) {
+                    ForEach(core.inputDevices) { d in Text(d.name).tag(d.id) }
+                } label: {
+                    SettingLabel(title: "Input device", description: "The microphone the Mac uses, the same as in Sound settings.")
+                }
+                Toggle(isOn: Binding(get: { core.micMuted }, set: { _ in core.toggleMicrophone() })) {
+                    SettingLabel(title: "Mute the microphone",
+                                 description: core.micMutable ? "For every app at once." : "This input can't be muted by apps.")
+                }
+                .disabled(!core.micMutable)
+            } header: {
+                GroupTitle(title: "Input")
+            }
+
             Section {
                 // Remembered separately with and without a controller; only the current one shows.
                 Toggle(isOn: core.hardwarePresent ? $settings.masterMode : $settings.masterModeWithoutController) {
@@ -260,7 +292,7 @@ private struct GeneralPage: View {
                         title: core.hardwarePresent ? "Use fader 1 as master volume" : "Use channel 1 as master volume",
                         description: core.masterSupported
                             ? nil
-                            : "\(core.outputName) sets its volume in hardware, so macOS can't control it. This turns on automatically when you switch to an output that supports it."
+                            : "\(core.outputName) sets its volume in hardware, so macOS can't control it. This becomes available on outputs macOS can control, such as the MacBook speakers."
                     )
                 }
                 .disabled(!core.masterSupported)
@@ -284,10 +316,7 @@ private struct GeneralPage: View {
                                  description: "Each website or app plays at the last volume you set for it. Set one YouTube tab to 40%, and every YouTube tab you open later also plays at 40%.")
                 }
             } header: {
-                VStack(alignment: .leading, spacing: 10 * scale) {
-                    PageHeader(title: "General")
-                    GroupTitle(title: "Volume")
-                }
+                GroupTitle(title: "Volume")
             }
 
             Section {

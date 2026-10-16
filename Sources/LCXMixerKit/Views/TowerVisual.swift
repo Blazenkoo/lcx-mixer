@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// The LCX Mixer visual: the app's icon and name above a tilted field of square tiles that rise and
+/// The Media Mixer visual: the app's icon and name above a tilted field of square tiles that rise and
 /// fall like level meters, coloured green → yellow → red, fading into the bottom edge.
 /// Shown in the welcome window, About and (small, without the title) at the bottom of Settings.
 struct TowerVisual: View {
@@ -45,13 +45,13 @@ struct TowerVisual: View {
                     .padding(.top, h * 0.075)
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("LCX Mixer")
+                .accessibilityLabel("Media Mixer")
             }
         }
         .background(palette.background)
         .background(WindowVisibilityProbe(visible: $visible))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("LCX Mixer: tiles rising and falling like level meters")
+        .accessibilityLabel("Media Mixer: tiles rising and falling like level meters")
     }
 }
 

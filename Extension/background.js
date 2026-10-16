@@ -1,4 +1,4 @@
-// LCX Mixer background worker: reports Chrome tabs to the Mac app and carries out its commands.
+// Media Mixer background worker: reports Chrome tabs to the Mac app and carries out its commands.
 const HOST = 'org.lcxmixer.app';
 const BUILD = '__BUILD_ID__'; // replaced by the build script
 // The scripts that run in the page's own world (each site's file, then main-world.js), in the
@@ -26,7 +26,7 @@ function connect() {
   port.onMessage.addListener(onAppMessage);
   port.onDisconnect.addListener(() => {
     const err = chrome.runtime.lastError;
-    if (err) console.warn('LCX Mixer bridge disconnected:', err.message);
+    if (err) console.warn('Media Mixer bridge disconnected:', err.message);
     port = null;
     appConnected = false;
     setTimeout(connect, 5000);
@@ -260,9 +260,9 @@ async function injectExisting() {
   for (const t of tabs) {
     if (!t.url || !/^https?:/.test(t.url)) continue;
     chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: PAGE_SCRIPTS, world: 'MAIN' })
-      .catch((e) => console.info('[LCX Mixer] inject main failed', t.id, String(e)));
+      .catch((e) => console.info('[Media Mixer] inject main failed', t.id, String(e)));
     chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: ['isolated.js'] })
-      .catch((e) => console.info('[LCX Mixer] inject isolated failed', t.id, String(e)));
+      .catch((e) => console.info('[Media Mixer] inject isolated failed', t.id, String(e)));
   }
 }
 chrome.runtime.onInstalled.addListener(injectExisting);
@@ -276,7 +276,7 @@ const healAttempts = new Map(); // tabId -> { count, lastAt }
 const needsReload = new Set();  // tabIds
 const workerStartedAt = Date.now();
 const noMediaSince = new Map(); // tabId -> when an audible tab was first seen without a player
-const log = (...a) => console.info('[LCX Mixer]', ...a);
+const log = (...a) => console.info('[Media Mixer]', ...a);
 log('worker started, build', BUILD);
 async function healTabs() {
   const tabs = await chrome.tabs.query({ audible: true });

@@ -245,10 +245,10 @@ struct SettingsCredits: View {
                         .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1))
             }
             .buttonStyle(.plain)
-            .help("About LCX Mixer")
-            .accessibilityLabel("About LCX Mixer")
+            .help("About Media Mixer")
+            .accessibilityLabel("About Media Mixer")
             VStack(alignment: .leading, spacing: 4 * scale) {
-                Text("LCX Mixer \(AppInfo.version)").scaledFont(AppText.body, weight: .semibold)
+                Text("Media Mixer \(AppInfo.version)").scaledFont(AppText.body, weight: .semibold)
                 Text(AppInfo.credit)
                     .scaledFont(AppText.callout)
                     .foregroundStyle(.secondary)

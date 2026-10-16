@@ -26,9 +26,15 @@ struct MixerWindowView: View {
             HStack {
                 HeaderStatus(core: core)
                 Spacer()
-                // A real button, like the strips' own, with a quieter symbol so it doesn't compete with them.
-                SmallIconButton(symbol: "gearshape", help: "Settings (⌘,)", tint: .secondary, action: openSettings)
-                    .accessibilityLabel("Settings")
+                // A real button with its label, the same size as the header's other buttons.
+                Button(action: openSettings) {
+                    Label("Settings", systemImage: "gearshape")
+                        .labelStyle(.titleAndIcon)
+                        .scaledFont(AppText.status, weight: .medium)
+                        .frame(height: 22 * scale)
+                }
+                .buttonStyle(AppButtonStyle())
+                .help("Settings (⌘,)")
             }
 
             HStack(spacing: 8 * scale) {

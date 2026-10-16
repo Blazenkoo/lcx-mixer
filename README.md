@@ -1,19 +1,19 @@
 
-<h1 align="center">LCX Mixer</h1>
+<h1 align="center">Media Mixer</h1>
 
 <p align="center"><strong>Map everything playing to your Novation Launch Control XL (MK2).</strong></p>
 
 <p align="center">
-  <img src="docs/images/hero.png" width="880" alt="The LCX Mixer window: YouTube, Twitch, GarageBand and Spotify on channels 1–4, four free channels, and App Store in the Unassigned Audio Sources list">
+  <img src="docs/images/hero.png" width="880" alt="The Media Mixer window: YouTube, Twitch, GarageBand and Spotify on channels 1–4, four free channels, and App Store in the Unassigned Audio Sources list">
 </p>
 
-LCX Mixer turns a Novation Launch Control XL mk2 into an 8-channel mixer for whatever is making sound: individual browser tabs (Spotify, YouTube, Twitch…) and native apps (games, Discord, Music…). Each new source lands on the next free fader automatically.
+Media Mixer turns a Novation Launch Control XL mk2 into an 8-channel mixer for whatever is making sound: individual browser tabs (Spotify, YouTube, Twitch…) and native apps (games, Discord, Music…). Each new source lands on the next free fader automatically. No controller? It works on screen too. (Before 2.4 it was called LCX Mixer.)
 
 ## Why it exists
 
 macOS has no per-app volume mixer, and browsers play every tab through one shared audio stream. In practice that means balancing a game, a voice chat and music by hunting through tabs and in-app sliders, often mid-game.
 
-A physical controller solves that: one fader per source, always in the same place, usable without looking or switching windows. LCX Mixer makes that work for both native apps and individual browser tabs, with no setup per session.
+A physical controller solves that: one fader per source, always in the same place, usable without looking or switching windows. Media Mixer makes that work for both native apps and individual browser tabs, with no setup per session.
 
 https://github.com/user-attachments/assets/81d2e758-2983-4775-951c-c71e33042e1c
 
@@ -41,12 +41,12 @@ The full product specification, including assignment rules, LED colours and edge
 ## Build and install
 
 1. Clone or download this repository.
-2. Double-click **Build LCX Mixer.command**, or run `./scripts/build.sh`.
+2. Double-click **Build Media Mixer.command**, or run `./scripts/build.sh`.
    The script builds the app, signs it, installs it to Applications and launches it.
    If you have an "Apple Development" certificate (Xcode → Settings → Accounts → Manage Certificates), the app keeps its audio permission between rebuilds.
-3. On first launch, a welcome window walks through the three setup steps: the audio permission, the browser extension and the controller. macOS asks for **System audio recording**, which is needed to control the volume of native apps. About LCX Mixer, in the menu-bar panel, shows the steps again.
+3. On first launch, a welcome window walks through the three setup steps: the audio permission, the browser extension and the controller. macOS asks for **System audio recording**, which is needed to control the volume of native apps. About Media Mixer, in the menu-bar panel, shows the steps again.
 
-To run the tests, double-click **Test LCX Mixer.command** or run `./scripts/test.sh`. The extension's tests need [Node.js](https://nodejs.org); without it they're skipped locally and still run in CI on every push. How the code is laid out, how to read the logs and how to measure performance: [docs/SPEC.md](docs/SPEC.md#testing-logging-and-auditing).
+To run the tests, double-click **Test Media Mixer.command** or run `./scripts/test.sh`. The extension's tests need [Node.js](https://nodejs.org); without it they're skipped locally and still run in CI on every push. How the code is laid out, how to read the logs and how to measure performance: [docs/SPEC.md](docs/SPEC.md#testing-logging-and-auditing).
 
 ## Browser extension
 
@@ -72,7 +72,7 @@ In each browser you use, open its extensions page (`chrome://extensions`, `edge:
 
 **Mute and Solo** are deliberately split: Mute silences everything playing on your Mac, Solo silences your current microphone for every app at once (Discord, Zoom, OBS…). Both light up while on.
 
-**No controller?** LCX Mixer works on its own. The window says "Audio mixer active", channels close up as sources leave so there are no gaps, channel 1 is master volume (on outputs macOS can control, such as the MacBook speakers), and the menu-bar panel gets a volume slider for each channel. Plug a controller in at any time; nothing moves.
+**No controller?** Media Mixer works on its own. The window says "Media mixer active", channels close up as sources leave so there are no gaps, channel 1 is master volume (on outputs macOS can control, such as the MacBook speakers), and the menu-bar panel gets a volume slider for each channel. Plug a controller in at any time; nothing moves.
 
 **LED colours:** green = playing, amber = paused, dim green = a native app (no play/pause), red = muted, off = empty channel.
 
@@ -98,20 +98,20 @@ Touching any control shows a short **pop-up** on the screen where that source is
 
 ## Security
 
-LCX Mixer has **no network attack surface**: there is no server or web app, and nothing listens on the network.
+Media Mixer has **no network attack surface**: there is no server or web app, and nothing listens on the network.
 
 - Browsers talk to the app only through their native messaging, which they allow only for this extension's ID.
 - The app and its browser bridge connect through a local socket that only your user account can access. Each side checks that the other runs under your account and carries the app's own code signature.
 - Site icons come from the browser's local icon cache. The app makes no network requests.
 - Logs stay in macOS's own log on your Mac, with anything that could identify you hidden.
 - The only permission requested is System audio recording. No microphone access: muting the microphone only switches the input device's mute (or input volume) setting, and the app never listens to it.
-- **About the purple dot:** while a native app's volume is below 100% or it's muted, macOS shows a purple dot in the menu bar, its standard sign that an app is capturing system audio. That's LCX Mixer taking over the app's sound to set its volume. The dot also shows while the mixer window or the menu-bar panel is open, because LCX Mixer then listens to playing native apps at 100% to draw their level meters; their sound itself stays untouched. With the windows closed and every app at 100%, the dot goes away. Click the dot or open Control Center to see the app's name. An orange dot would mean a microphone is in use, which LCX Mixer never does.
+- **About the purple dot:** while a native app's volume is below 100% or it's muted, macOS shows a purple dot in the menu bar, its standard sign that an app is capturing system audio. That's Media Mixer taking over the app's sound to set its volume. The dot also shows while the mixer window or the menu-bar panel is open, because Media Mixer then listens to playing native apps at 100% to draw their level meters; their sound itself stays untouched. With the windows closed and every app at 100%, the dot goes away. Click the dot or open Control Center to see the app's name. An orange dot would mean a microphone is in use, which Media Mixer never does.
 
 Found a security problem? Please report it privately, as described in [SECURITY.md](SECURITY.md), which also lists everything the app exposes and how it's protected.
 
 ## Known limitations
 
-- **Changing a native app's volume** from 100% (or back to it) can sound slightly rough for a split second, as the app's sound crossfades over to LCX Mixer (or back). It happens only at that moment, not while you adjust the volume.
+- **Changing a native app's volume** from 100% (or back to it) can sound slightly rough for a split second, as the app's sound crossfades over to Media Mixer (or back). It happens only at that moment, not while you adjust the volume.
 - **Browser tab meters** show activity, not real levels: drops land on the bar below the channel's volume and ripple outward. macOS can't separate the sound of individual tabs, so the tab meter is deliberately unlike a real one.
 - **Twitch live streams:** "pause" silences the tab and keeps the stream live. A background tab can't reliably resume a paused live stream.
 - **Spotify** applies its own loudness curve to its volume slider, so the bottom half of the fader is gentler than on other sources.
@@ -123,7 +123,7 @@ Found a security problem? Please report it privately, as described in [SECURITY.
 
 ## How it was made
 
-LCX Mixer was designed and specified by @Blazenkoo (on Github.com) and built with Claude (Anthropic), from an approved specification through hardware testing on a real controller.
+Media Mixer was designed and specified by @Blazenkoo (on Github.com) and built with Claude (Anthropic), from an approved specification through hardware testing on a real controller.
 
 ## License
 

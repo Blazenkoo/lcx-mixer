@@ -212,7 +212,7 @@ final class DeviceListTests: XCTestCase {
     func testHiddenDevicesAndTheAppsOwnTapDevicesAreLeftOut() {
         let raw = [
             device(1, "MacBook Pro Speakers", outputs: 1),
-            device(2, "LCX Mixer", uid: "lcxmixer-1234", inputs: 1, outputs: 1),
+            device(2, "Media Mixer", uid: "lcxmixer-1234", inputs: 1, outputs: 1),
             device(3, "Hidden", hidden: true, outputs: 1),
         ]
         XCTAssertEqual(CA.visibleDevices(raw, input: false).map(\.name), ["MacBook Pro Speakers"])

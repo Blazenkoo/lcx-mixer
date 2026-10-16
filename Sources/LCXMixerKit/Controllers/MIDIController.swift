@@ -51,15 +51,15 @@ final class MIDIController {
     func start() {
         guard !started else { return }
         started = true
-        var status = MIDIClientCreateWithBlock("LCX Mixer" as CFString, &client) { [weak self] _ in
+        var status = MIDIClientCreateWithBlock("Media Mixer" as CFString, &client) { [weak self] _ in
             DispatchQueue.main.async { self?.rescan() }
         }
         if status != noErr { Log.midi.error("MIDIClientCreate failed: \(status)") }
-        status = MIDIInputPortCreateWithBlock(client, "LCX Mixer In" as CFString, &inPort) { [weak self] list, _ in
+        status = MIDIInputPortCreateWithBlock(client, "Media Mixer In" as CFString, &inPort) { [weak self] list, _ in
             self?.handle(list)
         }
         if status != noErr { Log.midi.error("MIDIInputPortCreate failed: \(status)") }
-        status = MIDIOutputPortCreate(client, "LCX Mixer Out" as CFString, &outPort)
+        status = MIDIOutputPortCreate(client, "Media Mixer Out" as CFString, &outPort)
         if status != noErr { Log.midi.error("MIDIOutputPortCreate failed: \(status)") }
         rescan()
     }

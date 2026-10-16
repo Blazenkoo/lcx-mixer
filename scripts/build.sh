@@ -1,12 +1,12 @@
 #!/bin/bash
-# Builds LCX Mixer, signs it, installs it to Applications and launches it.
+# Builds Media Mixer, signs it, installs it to Applications and launches it.
 # Usage: ./scripts/build.sh            (release build + install + launch)
 #        ./scripts/build.sh --no-run   (build and install only)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
-APP_NAME="LCX Mixer"
+APP_NAME="Media Mixer"
 EXE="LCXMixer"
 
 if [ -d /Applications/Xcode.app/Contents/Developer ]; then
@@ -58,6 +58,16 @@ sleep 0.5
 DEST="/Applications"
 if [ ! -w "$DEST" ]; then DEST="$HOME/Applications"; mkdir -p "$DEST"; fi
 rm -rf "$DEST/$APP_NAME.app"
+# Before 2.4 the app was called LCX Mixer. Move that copy to the Trash (recoverable, no Finder
+# scripting needed), so only one app with this bundle ID stays installed.
+OLD_APP="$DEST/LCX Mixer.app"
+if [ -d "$OLD_APP" ]; then
+  if osascript -l JavaScript -e "ObjC.import('Foundation'); \$.NSFileManager.defaultManager.trashItemAtURLResultingItemURLError(\$.NSURL.fileURLWithPath('$OLD_APP'), null, null)" >/dev/null 2>&1 && [ ! -d "$OLD_APP" ]; then
+    echo "    moved $OLD_APP to the Trash"
+  else
+    echo "    WARNING: couldn't move $OLD_APP to the Trash; please delete it yourself"
+  fi
+fi
 cp -R "$APP" "$DEST/"
 echo "    installed to $DEST/$APP_NAME.app"
 

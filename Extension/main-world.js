@@ -41,7 +41,7 @@
         const found = make(location.hostname, helpers);
         if (found) return found;
       } catch (e) {
-        console.error('[LCX Mixer] site script failed', BUILD, e);
+        console.error('[Media Mixer] site script failed', BUILD, e);
       }
     }
     return {};
@@ -286,7 +286,7 @@
   document.addEventListener('lcxmixer:shutdown', function onShutdown() {
     stopped = true;
     window.__lcxMixerMedia = [...media];
-    if (window.top === window) console.debug('[LCX Mixer] page script', BUILD, `handing over ${media.size} player(s)`);
+    if (window.top === window) console.debug('[Media Mixer] page script', BUILD, `handing over ${media.size} player(s)`);
     clearInterval(scanTimer);
     document.removeEventListener(CMD_EVENT, onCmd);
     document.removeEventListener('play', onDocPlay, true);
@@ -300,10 +300,10 @@
     if (document.readyState !== 'loading') scan();
     if (window.top === window) {
       // console.debug: some sites (Spotify) wrap the console and drop info-level messages.
-      console.debug('[LCX Mixer] page script', BUILD, handed.length ? `took over ${handed.length} player(s)` : 'started fresh',
+      console.debug('[Media Mixer] page script', BUILD, handed.length ? `took over ${handed.length} player(s)` : 'started fresh',
         { attached: handed.filter((el) => el.isConnected).length, playing: handed.filter((el) => !el.paused).length });
     }
   } catch (e) {
-    console.error('[LCX Mixer] page script failed to start', BUILD, e);
+    console.error('[Media Mixer] page script failed to start', BUILD, e);
   }
 })();

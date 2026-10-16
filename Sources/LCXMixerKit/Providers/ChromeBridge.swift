@@ -141,7 +141,7 @@ final class ChromeBridgeServer {
         guard let executable = Bundle.main.executablePath else { return }
         let manifest: [String: Any] = [
             "name": AppPaths.nativeHostName,
-            "description": "LCX Mixer bridge",
+            "description": "Media Mixer bridge",
             "path": executable,
             "type": "stdio",
             "allowed_origins": ["chrome-extension://\(AppPaths.extensionID)/"],
@@ -159,7 +159,7 @@ final class ChromeBridgeServer {
                        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                        let path = json["path"] as? String,
                        URL(fileURLWithPath: path).lastPathComponent == URL(fileURLWithPath: executable).lastPathComponent,
-                       path.contains("LCX Mixer.app") {
+                       path.contains("LCX Mixer.app") || path.contains("Media Mixer.app") {
                         try? fm.removeItem(at: file)
                     }
                 }

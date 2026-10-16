@@ -47,7 +47,7 @@ final class MixerCore: ObservableObject {
     /// calls this a mode.
     @Published private(set) var hardwarePresent = false
     /// How long a controller may be gone before the mixer carries on without it.
-    var controllerGrace: TimeInterval = 5
+    var controllerGrace: TimeInterval = 2
     private var graceGeneration = 0
     /// Whether the current microphone can be muted by apps (the Microphone button is dimmed if not).
     @Published private(set) var micMutable = true
