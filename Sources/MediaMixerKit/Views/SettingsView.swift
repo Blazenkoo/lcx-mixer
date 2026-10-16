@@ -373,7 +373,7 @@ private struct ControllerPage: View {
                 } label: {
                     SettingLabel(title: "Controller", description: core.hardwarePresent
                                  ? "\(core.controllerName) is connected."
-                                 : "No controller connected. The mixer works from its window and the menu bar.")
+                                 : "No controller connected. The mixer works from its window and the menu bar.\n\nPlugged in but not found? Open Audio MIDI Setup → Window → Show MIDI Studio. If the controller is greyed out there, macOS can't see it: unplug the USB hub and plug it back in, or connect the controller straight to the Mac. Hubs without their own power supply can lose it, especially after sleep.")
                 }
 
                 Picker(selection: $settings.spotifyHold) {

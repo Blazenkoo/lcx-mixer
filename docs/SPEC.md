@@ -319,7 +319,7 @@ General opens with **Output** and **Input**: the device pickers, the same as in 
 | --- | --- |
 | Use fader 1 as master volume (with a controller) | On (off before 2.4); greyed out when the output device sets its volume in hardware |
 | Use channel 1 as master volume (without a controller) | On; greyed out the same way. Only the setting for the current state shows |
-| Controller | Novation Launch Control XL mk2; alternatives: Mackie Control (experimental) and any MIDI controller (MIDI learn), with a device picker. Without one connected: "No controller connected. The mixer works from its window and the menu bar." |
+| Controller | Novation Launch Control XL mk2; alternatives: Mackie Control (experimental) and any MIDI controller (MIDI learn), with a device picker. Without one connected: "No controller connected. The mixer works from its window and the menu bar.", plus a hint for one that's plugged in but not found (check Audio MIDI Setup's MIDI Studio; if it's greyed out, replug the USB hub or connect it straight to the Mac) |
 | Holding play on Spotify | Add to Liked Songs; alternative: Reload the tab |
 | Volume curve | Natural (gentle at the low end); alternative: linear. A small graph shows how loud each fader position sounds |
 | Text size | Default; Smaller, Larger and Largest scale the mixer window, panel, pop-up and Settings. ⌘− / ⌘+ / ⌘0 in the mixer window and Settings |
@@ -348,6 +348,7 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 
 | Situation | Behaviour |
 | --- | --- |
+| Controller plugged in through a USB hub but greyed out in Audio MIDI Setup (seen 16 Oct after several replugs) | macOS doesn't offer it to any app, so it shows as not connected; the app logs which MIDI devices it sees. Replugging the hub or plugging the controller straight into the Mac brings it back, and the app connects within a second. Settings → Controller says so |
 | Controller unplugged, then plugged back in | Back within 2 s: nothing changes. After that the mixer carries on without it: "Media mixer active", channels close up (rule 8), the panel gets sliders. On reconnect the order is kept, LEDs are refreshed and all faders start detached |
 | Spotify can't add a song (an ad, a podcast, signed out, a changed player, no answer within 2 s) | The pop-up says "Can't add this to Liked Songs"; nothing else happens |
 | Mixer app restarts while media keeps playing | Each source that is still open goes back to its old channel; the fader needs one touch to pick it up again, as the faders aren't motorised |
