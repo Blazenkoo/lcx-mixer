@@ -28,41 +28,12 @@ struct ChannelStripView: View {
         if let s = source, !isMaster {
             strip
                 .contentShape(RoundedRectangle(cornerRadius: 12))
-                .draggable(s.id) {
-                    HStack(spacing: 6) {
-                        SourceIcon(source: s, size: 20 * scale)
-                        Text("\(index + 1) · \(s.name)").scaledFont(13, weight: .semibold)
-                    }
-                    .padding(.horizontal, 10 * scale).padding(.vertical, 6 * scale)
-                }
-                .contextMenu { channelMenu(s) }
-                .accessibilityHint("Drag onto another channel, or use Move to channel in the context menu. If that channel is in use, the two swap.")
+                .draggable(s.id) { ChannelMenu.dragPreview(s, channel: index, scale: scale) }
+                .contextMenu { ChannelMenu.items(core: core, index: index, source: s) }
+                .accessibilityHint(ChannelMenu.dragHint)
         } else {
             strip
         }
-    }
-
-    /// Right-click menu: the non-mouse way to move a channel (also reachable with VoiceOver).
-    @ViewBuilder
-    private func channelMenu(_ s: Source) -> some View {
-        Menu("Move to channel") {
-            ForEach(core.firstSourceChannel..<MixerCore.channelCount, id: \.self) { ch in
-                if ch != index {
-                    Button(menuLabel(forChannel: ch)) { core.move(s.id, to: ch) }
-                }
-            }
-        }
-        Button("Bring \(s.name) to the front") { core.focus(s.id) }
-        Divider()
-        Button("Unassign") { core.unassign(channel: index) }
-        Button("Always mute \(s.name)") { core.alwaysMute(s.id) }
-    }
-
-    private func menuLabel(forChannel ch: Int) -> String {
-        if let other = core.source(onChannel: ch) {
-            return "\(ch + 1) · swap with \(other.name)"
-        }
-        return "\(ch + 1) · Free"
     }
 
     private var strip: some View {

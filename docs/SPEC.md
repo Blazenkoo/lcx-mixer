@@ -509,3 +509,6 @@ Open source under the MIT licence (© 2026 Blaženko Davidović), shared as sour
 - Safari and Firefox tab control through their own extensions.
 - Per-channel output routing, such as Discord to headphones and Spotify to the monitors.
 - Scenes (saved sets of volumes), ducking, and volume boost above 100%.
+- Drag-and-drop channels in the menu-bar panel, so moving a channel doesn't need the mixer window.
+- Holding play on a Spotify channel adds the song to Liked Songs instead of reloading the tab (a setting, on by default); when there's nothing to like, such as an ad or a podcast, the pop-up says it can't be added and nothing else happens. The hold for every reload drops from 3 s to 2 s.
+- Working without a controller: with no controller or MIDI device present, channels close up when a source leaves, so there are no gaps; channel 1 is master volume by default; the window header says "Audio mixer active"; the menu-bar panel lists only occupied channels, each with a volume slider. Nothing calls it a separate mode. The panel also drops its "Controller connected" line, and the window and panel get buttons for mute all media and the microphone.

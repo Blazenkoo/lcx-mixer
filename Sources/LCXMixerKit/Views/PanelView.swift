@@ -65,9 +65,37 @@ private struct PanelRow: View {
     @ObservedObject var core: MixerCore
     let index: Int
     @State private var hovering = false
+    @State private var isTargeted = false
     @Environment(\.uiScale) private var scale
 
+    private var isMaster: Bool { core.masterActive && index == 0 }
+
     var body: some View {
+        draggableRow
+            .dropDestination(for: String.self) { items, _ in
+                guard !isMaster, let id = items.first else { return false }
+                core.move(id, to: index)
+                return true
+            } isTargeted: { isTargeted = $0 }
+    }
+
+    /// Like the window's strips: the whole row can be dragged onto another channel (its buttons keep
+    /// their own behaviour), and right-click opens the same menu.
+    @ViewBuilder
+    private var draggableRow: some View {
+        if let s = core.source(onChannel: index), !isMaster {
+            row
+                .contentShape(RoundedRectangle(cornerRadius: 6))
+                .draggable(s.id) { ChannelMenu.dragPreview(s, channel: index, scale: scale) }
+                .contextMenu { ChannelMenu.items(core: core, index: index, source: s) }
+                .accessibilityHint(ChannelMenu.dragHint)
+        } else {
+            row
+        }
+    }
+
+    @ViewBuilder
+    private var row: some View {
         let status = core.status(ofChannel: index)
         let source = core.source(onChannel: index)
         HStack(spacing: 8 * scale) {
@@ -118,7 +146,15 @@ private struct PanelRow: View {
         .scaledFont(11)
         .padding(.horizontal, 6 * scale)
         .frame(height: 26 * scale)
-        .background(RoundedRectangle(cornerRadius: 6).fill(hovering && source != nil ? Color.secondary.opacity(0.1) : Color.clear))
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isTargeted ? Color.accentColor.opacity(0.15)
+                      : hovering && source != nil ? Color.secondary.opacity(0.1) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(Color.accentColor, lineWidth: isTargeted ? 2 : 0)
+        )
         .onHover { hovering = $0 }
     }
 }
