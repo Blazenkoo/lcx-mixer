@@ -31,6 +31,7 @@ enum AppPaths {
 
     static var support: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        // Keeps its pre-2.4 name: browsers load the extension from this folder, and it holds the bridge socket.
         let dir = base.appendingPathComponent("LCXMixer", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         // Only this user account may look inside (the bridge socket lives here).

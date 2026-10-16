@@ -1,5 +1,5 @@
 import XCTest
-@testable import LCXMixerKit
+@testable import MediaMixerKit
 
 /// Stands in for a hardware controller: always connected, and records every set of lights it gets.
 @MainActor

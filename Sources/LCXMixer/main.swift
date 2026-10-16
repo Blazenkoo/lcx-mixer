@@ -1,3 +1,0 @@
-import LCXMixerKit
-
-AppMain.run()

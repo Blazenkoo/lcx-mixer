@@ -1,5 +1,5 @@
 import XCTest
-@testable import LCXMixerKit
+@testable import MediaMixerKit
 
 /// TabMerger on its own: tab reports in, source values out.
 final class TabMergerTests: XCTestCase {

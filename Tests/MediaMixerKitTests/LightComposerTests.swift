@@ -1,5 +1,5 @@
 import XCTest
-@testable import LCXMixerKit
+@testable import MediaMixerKit
 
 /// LightComposer on its own: plain values in, lights out.
 final class LightComposerTests: XCTestCase {

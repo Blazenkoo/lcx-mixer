@@ -1,5 +1,5 @@
 import XCTest
-@testable import LCXMixerKit
+@testable import MediaMixerKit
 
 /// Telling when a muted source keeps trying to make sound, and not for short pings.
 final class PlayAttemptsTests: XCTestCase {

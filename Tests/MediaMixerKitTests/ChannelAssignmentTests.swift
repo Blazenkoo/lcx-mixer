@@ -1,5 +1,5 @@
 import XCTest
-@testable import LCXMixerKit
+@testable import MediaMixerKit
 
 /// Where sources land: first free channel, the waiting list, unassigning, moving, and getting
 /// channels back after a restart.

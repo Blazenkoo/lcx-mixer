@@ -1,0 +1,3 @@
+import MediaMixerKit
+
+AppMain.run()

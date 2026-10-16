@@ -1,5 +1,5 @@
 import XCTest
-@testable import LCXMixerKit
+@testable import MediaMixerKit
 
 /// Saved settings: the version that lets later releases upgrade them safely.
 final class SettingsTests: XCTestCase {

@@ -2,13 +2,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "LCXMixer",
+    name: "MediaMixer",
     platforms: [.macOS("14.2")],
     targets: [
         // Everything the app does. A library so the tests can import it.
         .target(
-            name: "LCXMixerKit",
-            path: "Sources/LCXMixerKit",
+            name: "MediaMixerKit",
+            path: "Sources/MediaMixerKit",
             linkerSettings: [
                 .linkedFramework("CoreMIDI"),
                 .linkedFramework("CoreAudio"),
@@ -17,16 +17,16 @@ let package = Package(
                 .linkedFramework("Security"),
             ]
         ),
-        // The app itself: only main.swift, which starts LCXMixerKit.
+        // The app itself: only main.swift, which starts MediaMixerKit.
         .executableTarget(
-            name: "LCXMixer",
-            dependencies: ["LCXMixerKit"],
-            path: "Sources/LCXMixer"
+            name: "MediaMixer",
+            dependencies: ["MediaMixerKit"],
+            path: "Sources/MediaMixer"
         ),
         .testTarget(
-            name: "LCXMixerKitTests",
-            dependencies: ["LCXMixerKit"],
-            path: "Tests/LCXMixerKitTests"
+            name: "MediaMixerKitTests",
+            dependencies: ["MediaMixerKit"],
+            path: "Tests/MediaMixerKitTests"
         ),
     ]
 )

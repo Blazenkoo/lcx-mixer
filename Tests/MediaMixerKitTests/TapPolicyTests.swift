@@ -1,5 +1,5 @@
 import XCTest
-@testable import LCXMixerKit
+@testable import MediaMixerKit
 
 /// When a native app gets a tap, and what kind: control its volume, only listen for a meter, or none.
 final class TapPolicyTests: XCTestCase {

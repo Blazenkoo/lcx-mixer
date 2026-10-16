@@ -1,5 +1,5 @@
 import XCTest
-@testable import LCXMixerKit
+@testable import MediaMixerKit
 
 /// Reading MIDI, the Launch Control XL and Mackie Control maps, and MIDI learn bindings.
 @MainActor

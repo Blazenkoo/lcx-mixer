@@ -334,7 +334,7 @@ General opens with **Output** and **Input**: the device pickers, the same as in 
 
 **Remembered volume:** the app saves one volume per website (youtube.com) and per app (League), not per tab. It updates whenever you change a source's volume and applies when a new source from that website or app gets a channel. It's stored on this Mac only: a website or app name and a volume, with no tab list, page addresses or history.
 
-**Channel layout:** which source sits on which channel is saved whenever it changes, so it survives a quit or a crash (see assignment rule 7). Only the browser, the tab's number and website, or the app's name, are stored. If the browser was restarted in between, its tabs have new numbers, so they fill channels fresh.
+**Channel layout:** which source sits on which channel is saved whenever it changes, so it survives a quit or a crash (see assignment rule 7). It's saved as if master were off, so after a restart it lines up with the current output: on one where master is on, everything moves down one again. Only the browser, the tab's number and website, or the app's name, are stored. If the browser was restarted in between, its tabs have new numbers, so they fill channels fresh.
 
 **MIDI learn assignments** are saved per function as the message type, MIDI channel and number.
 

@@ -19,7 +19,7 @@ if [ -z "$state" ]; then
 fi
 
 # The app itself, not the small bridge processes the browsers start (same executable, other path).
-pid="$(pgrep -f "Mixer.app/Contents/MacOS/LCXMixer$" | head -1 || true)"
+pid="$(pgrep -f "Media Mixer.app/Contents/MacOS/MediaMixer$" | head -1 || true)"
 if [ -z "$pid" ]; then
   echo "Media Mixer isn't running." >&2
   exit 1

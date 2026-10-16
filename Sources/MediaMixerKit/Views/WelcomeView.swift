@@ -5,8 +5,8 @@ enum AppInfo {
     static var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
     }
-    static let repository = URL(string: "https://github.com/Blazenkoo/lcx-mixer")!
-    static let licence = URL(string: "https://github.com/Blazenkoo/lcx-mixer/blob/main/LICENSE")!
+    static let repository = URL(string: "https://github.com/Blazenkoo/media-mixer")!
+    static let licence = URL(string: "https://github.com/Blazenkoo/media-mixer/blob/main/LICENSE")!
     static let credit = "Designed and specified by Blaženko Davidović. Built with Claude."
 }
 

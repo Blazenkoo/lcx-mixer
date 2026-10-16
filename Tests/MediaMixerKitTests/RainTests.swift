@@ -1,5 +1,5 @@
 import XCTest
-@testable import LCXMixerKit
+@testable import MediaMixerKit
 
 /// Activity drops follow the channel's volume: they land only below it, and fewer of them at a
 /// lower volume.

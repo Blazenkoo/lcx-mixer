@@ -1,5 +1,5 @@
 import XCTest
-@testable import LCXMixerKit
+@testable import MediaMixerKit
 
 /// What a typed list entry becomes, and when Settings refuses it.
 final class EntryInputTests: XCTestCase {

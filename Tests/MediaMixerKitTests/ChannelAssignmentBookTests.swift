@@ -1,5 +1,5 @@
 import XCTest
-@testable import LCXMixerKit
+@testable import MediaMixerKit
 
 private typealias Slot = ChannelAssignment.SavedSlot
 

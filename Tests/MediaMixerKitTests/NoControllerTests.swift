@@ -1,5 +1,5 @@
 import XCTest
-@testable import LCXMixerKit
+@testable import MediaMixerKit
 
 /// Without a controller: channels close up when a source leaves, keep their order, wait while the
 /// pointer is over the mixer, and a missing controller only counts after a grace period.
@@ -180,6 +180,31 @@ final class NoControllerTests: XCTestCase {
         m.core.updateMasterSupport(false)
         m.wait(0.05)
         XCTAssertEqual(Array(m.core.channels.prefix(4)), [tabID(1), tabID(2), tabID(3), nil])
+    }
+
+    func testALayoutSavedWithMasterOnComesBackWithoutAGapOnAnotherOutput() {
+        let m = TestMixer(self)
+        m.core.updateMasterSupport(true)              // the MacBook speakers
+        m.report((1...3).map { tab($0) })
+        XCTAssertEqual(Array(m.core.channels.prefix(4)), [nil, tabID(1), tabID(2), tabID(3)])
+        // The app restarts on the Scarlett: a fresh core reading the same saved layout.
+        let again = MixerCore(settings: m.settings, controller: FakeController(), layoutStore: m.store)
+        again.setHardwarePresent(true)
+        again.loadLayout()
+        again.handleTabs((1...3).map { tab($0) }, from: m.browser)
+        XCTAssertEqual(Array(again.channels.prefix(4)), [tabID(1), tabID(2), tabID(3), nil])
+    }
+
+    func testALayoutSavedWithMasterOnComesBackShiftedWhenMasterIsOnAgain() {
+        let m = TestMixer(self)
+        m.core.updateMasterSupport(true)
+        m.report((1...3).map { tab($0) })
+        let again = MixerCore(settings: m.settings, controller: FakeController(), layoutStore: m.store)
+        again.setHardwarePresent(true)
+        again.loadLayout()
+        again.updateMasterSupport(true)               // still on the speakers
+        again.handleTabs((1...3).map { tab($0) }, from: m.browser)
+        XCTAssertEqual(Array(again.channels.prefix(4)), [nil, tabID(1), tabID(2), tabID(3)])
     }
 
     func testTurningTheSettingOffMovesChannelsBackUp() {

@@ -1,5 +1,5 @@
 import XCTest
-@testable import LCXMixerKit
+@testable import MediaMixerKit
 
 /// Faders (soft takeover), the speed knob, and the fader curve.
 @MainActor

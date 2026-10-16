@@ -99,8 +99,15 @@ struct ChannelAssignment: Equatable {
     mutating func shiftDown(from first: Int) -> String? {
         guard first < channels.count else { return nil }
         let pushedOff = channels[channels.count - 1]
+        let heldBefore = held
+        held = [:]
         for ch in stride(from: channels.count - 1, to: first, by: -1) { set(ch, channels[ch - 1]) }
         set(first, nil)
+        // Channels held for returning sources move with everything else.
+        for (ch, slot) in heldBefore {
+            let to = ch >= first ? ch + 1 : ch
+            if to < channels.count && channels[to] == nil { held[to] = slot }
+        }
         return pushedOff
     }
 
@@ -108,8 +115,14 @@ struct ChannelAssignment: Equatable {
     /// `first`, and the last channel is left free.
     mutating func shiftUp(into first: Int) {
         guard first < channels.count else { return }
+        let heldBefore = held
+        held = [:]
         for ch in first..<(channels.count - 1) { set(ch, channels[ch + 1]) }
         set(channels.count - 1, nil)
+        for (ch, slot) in heldBefore {
+            let to = ch > first ? ch - 1 : ch
+            if channels[to] == nil { held[to] = slot }
+        }
     }
 
     /// Takes a source off every list. Its channel, if any, is cleared separately.

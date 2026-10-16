@@ -1,5 +1,5 @@
 import XCTest
-@testable import LCXMixerKit
+@testable import MediaMixerKit
 
 /// MuteLists on its own: which entries match which sources, and what a changed list means.
 final class MuteListsTests: XCTestCase {

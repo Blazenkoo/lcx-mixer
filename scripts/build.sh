@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 APP_NAME="Media Mixer"
-EXE="LCXMixer"
+EXE="MediaMixer"
 
 if [ -d /Applications/Xcode.app/Contents/Developer ]; then
   export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
@@ -54,6 +54,7 @@ fi
 
 echo "==> Installing"
 pkill -x "$EXE" 2>/dev/null || true
+pkill -x LCXMixer 2>/dev/null || true # the executable before 2.4
 sleep 0.5
 DEST="/Applications"
 if [ ! -w "$DEST" ]; then DEST="$HOME/Applications"; mkdir -p "$DEST"; fi

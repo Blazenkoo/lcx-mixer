@@ -646,8 +646,15 @@ final class MixerCore: ObservableObject {
     }
 
     /// Saves which source sits on which channel: only the source's ID (tab number or app) and, for tabs, the website.
+    /// Saved as if master were off (with master on, everything moves up one), so after a restart
+    /// the layout lines up with whatever output is current: master then shifts it down again.
     private func saveLayout() {
-        guard let data = try? JSONEncoder().encode(assignment.layout(sources)), data != lastSavedLayout else { return }
+        var slots = assignment.layout(sources)
+        if masterWasActive, !slots.isEmpty {
+            slots.removeFirst()
+            slots.append(nil)
+        }
+        guard let data = try? JSONEncoder().encode(slots), data != lastSavedLayout else { return }
         lastSavedLayout = data
         layoutStore.set(data, forKey: Self.layoutKey)
     }
@@ -1240,13 +1247,14 @@ final class MixerCore: ObservableObject {
             detachAllFaders()
             scheduleRefresh()
         }
-        guard active != masterWasActive, assignment.held.isEmpty else {
+        guard active != masterWasActive else {
             if !active { fillFromWaiting(0) }
             return
         }
         if active {
-            if !hardwarePresent { assignment.closeGaps(from: 0) }
-            if channels[0] != nil, let pushedOff = assignment.shiftDown(from: 0) {
+            if !hardwarePresent && assignment.held.isEmpty { assignment.closeGaps(from: 0) }
+            // Also when channel 1 is only held for a source returning after a restart.
+            if channels[0] != nil || assignment.held[0] != nil, let pushedOff = assignment.shiftDown(from: 0) {
                 assignment.addWaiting(pushedOff, first: true)
             }
         } else {
