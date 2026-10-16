@@ -83,7 +83,10 @@
         if (!widget) return 'unavailable';
         const isSong = !!widget.querySelector('a[href*="/track/"], a[href*="/album/"], a[href*="spotify:track:"]');
         if (!isSong) return 'unavailable';
-        const button = widget.querySelector('button[data-testid="add-button"]');
+        // In the player bar the button has no test ID (seen Oct 2026): it's the widget's one
+        // button with aria-checked, labelled "Add to Liked Songs". Older players had the test ID.
+        const button = widget.querySelector('button[data-testid="add-button"]') ||
+          widget.querySelector('button[aria-checked]');
         if (!button) return 'unavailable';
         if (button.getAttribute('aria-checked') === 'true') return 'already';
         button.click();

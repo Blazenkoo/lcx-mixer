@@ -122,8 +122,9 @@ struct ChannelStripView: View {
                 }
                 .disabled(!s.canPlayPause)
             }
-            iconButton(s.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill", help: s.isMuted ? "Unmute" : "Mute",
-                       tint: s.isMuted ? Color.errorText : nil) {
+            // Solid red while muted, like the Media and Microphone buttons.
+            SmallIconButton(symbol: s.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill", help: "Mute",
+                            isOn: s.isMuted) {
                 core.toggleMute(s.id)
             }
             iconButton("xmark", help: "Unassign from this channel") {

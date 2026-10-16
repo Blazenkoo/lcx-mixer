@@ -203,16 +203,22 @@ private struct PanelRow: View {
                 }
                 if s.kind == .tab {
                     Button { core.togglePlay(s.id) } label: {
-                        Image(systemName: s.isPlaying && s.canPlayPause ? "pause.fill" : "play.fill")
+                        glyph(s.isPlaying && s.canPlayPause ? "pause.fill" : "play.fill", on: false)
                     }
                     .buttonStyle(.borderless)
                     .disabled(!s.canPlayPause)
+                    .help("Play / pause")
+                    .accessibilityLabel("Play / pause \(s.name)")
                 }
+                // Solid red while muted, like the Media and Microphone buttons; the same size either way.
                 Button { core.toggleMute(s.id) } label: {
-                    Image(systemName: status == .muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                        .foregroundStyle(status == .muted ? Color.errorText : Color.primary)
+                    glyph(s.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill", on: s.isMuted)
                 }
                 .buttonStyle(.borderless)
+                .help("Mute")
+                .accessibilityLabel("Mute \(s.name)")
+                .accessibilityAddTraits(.isToggle)
+                .accessibilityValue(s.isMuted ? "On" : "Off")
                 if !withSlider { percent(core.position(of: s)) }
             } else {
                 Text("Free").scaledFont(12).foregroundStyle(.tertiary)
@@ -230,6 +236,15 @@ private struct PanelRow: View {
         } else if let s = source {
             VolumeSlider(name: s.name, channel: index + 1, value: core.position(of: s)) { core.setVolumeFromUI(s.id, position: $0) }
         }
+    }
+
+    /// A row's play or mute symbol in a fixed box; `on` fills it red with a white symbol.
+    private func glyph(_ symbol: String, on: Bool) -> some View {
+        Image(systemName: symbol)
+            .frame(width: 22 * scale, height: 18 * scale)
+            .foregroundStyle(on ? Color.white : Color.primary)
+            .background(RoundedRectangle(cornerRadius: 4 * scale, style: .continuous)
+                .fill(on ? Color.red.opacity(0.85) : Color.clear))
     }
 
     private func percent(_ value: Float) -> some View {

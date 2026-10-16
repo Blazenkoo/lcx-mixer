@@ -161,14 +161,16 @@ test('Twitch recordings can change speed and seek', () => {
 });
 
 // Holding play on a Spotify channel: the page presses Spotify's own Add to Liked Songs button.
-function spotifyNowPlaying({ link = '/album/abc?highlight=spotify:track:xyz', button = makeButton({ 'aria-checked': 'false' }) } = {}) {
+// As seen on open.spotify.com in Oct 2026: the button carries aria-checked but no test ID.
+function spotifyNowPlaying({ link = '/album/abc', button = makeButton({ 'aria-checked': 'false', 'aria-label': 'Add to Liked Songs' }), withTestId = false } = {}) {
   const widget = {
     querySelector(q) {
       if (q.startsWith('a[href') && link) {
         const wanted = ['/track/', '/album/', 'spotify:track:'];
         return wanted.some((w) => link.includes(w)) ? { href: link } : null;
       }
-      if (q === 'button[data-testid="add-button"]') return button;
+      if (q === 'button[data-testid="add-button"]') return withTestId ? button : null;
+      if (q === 'button[aria-checked]') return button;
       return null;
     },
   };
@@ -184,6 +186,13 @@ test('Spotify: holding play adds the song to Liked Songs', () => {
   assert.equal(button.clicks, 1);
   assert.deepEqual(results, [{ action: 'like', result: 'added' }]);
   assert.deepEqual(page.errors(), []);
+});
+
+test('Spotify: an older player with the add-button test ID works too', () => {
+  const { page, results, button } = spotifyNowPlaying({ withTestId: true });
+  page.command('A', { action: 'like' });
+  assert.equal(button.clicks, 1);
+  assert.deepEqual(results, [{ action: 'like', result: 'added' }]);
 });
 
 test('Spotify: a liked song stays liked', () => {

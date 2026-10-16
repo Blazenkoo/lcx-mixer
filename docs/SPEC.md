@@ -225,7 +225,7 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 4. **Status:** glyph (play, pause or mute) plus a coloured dot, as in [Status colours](#status-colours).
 5. **Volume:** a vertical bar with the percentage. With a controller, a ghost marker shows where the physical fader sits. When soft takeover is waiting, a short hint replaces the percentage: "Move fader down".
 6. **Level meter:** a real meter for native apps. Below 100% or muted, their sound passes through the app, which measures it. At 100% their sound plays untouched, and while a meter is on screen the app listens to it to measure the level, without changing it (since v2.2; before, they showed activity like browser tabs). Real meters use the fader's scale (since v2.3), so a sound at full strength peaks exactly at the fader. For browser tabs, macOS can't separate each tab's sound, so while a tab is audible the bar shows activity instead, made to look unlike a level: neutral drops land at random spots below the channel's volume and ripple outward both ways, fading as they spread and stopping at the volume line, since nothing heard can be louder. Fewer land at a lower volume: the same number per length of bar. They're quick and plentiful, since sound changes many times a second: about 5 drops a second on a full bar, several overlapping, each wave spreading in 0.8 s, at every volume. With Reduce Motion, each drop glows and fades in place instead: about one a second, each lasting 2.4 s.
-7. **Buttons:** play/pause (tabs only), mute, and unassign (×).
+7. **Buttons:** play/pause (tabs only), mute, and unassign (×). Mute turns solid red while the source is muted, like the Media and Microphone buttons; every button keeps its size in every state.
 
 **Interactions**
 
@@ -263,7 +263,7 @@ The window shows the 8 channels side by side as vertical strips, in the same lef
 - **Top line:** the Media and Microphone buttons, as in the window header.
 - **Channel rows with a controller:** all 8, as the faders sit: channel number · source name with media title ("YouTube – video title") · status dot · status glyph · volume percentage. Empty channels show "Free" in a quiet style.
 - **Channel rows without a controller:** only occupied channels (and Master), each on two lines: the same top line, then a volume slider and its percentage, lined up under the name. "Nothing playing" when there are none. The panel grows and shrinks with the list.
-- **Row actions:** clicking a row's mute or play glyph toggles it; hovering a row reveals unassign (×); right-click opens the window's channel menu.
+- **Row actions:** clicking a row's mute or play glyph toggles it (mute fills solid red while muted, at the same size); hovering a row reveals unassign (×); right-click opens the window's channel menu.
 - **Drag and drop:** a row can be dragged onto another (swapping if occupied), from anywhere except its slider and buttons; sources can be dragged in from Unassigned. Without a controller, dropping below the last row ("Add to the end") puts a source after the last occupied channel. Dropping elsewhere cancels.
 - **Below the rows:** the Unassigned and Muted tabs as compact rows (a small icon, the name and the main action), then "Open mixer", "Settings" and "Quit".
 
@@ -458,8 +458,11 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [ ] A short press plays and pauses; a 2 s hold on YouTube reloads, with the hint after 1 s
 - [ ] A 2 s hold on Spotify: "Added to Liked Songs"; again: "Already in Liked Songs", still liked; an ad or a podcast: "Can't add this to Liked Songs"
 - [ ] With Holding play on Spotify set to Reload the tab, the hold reloads Spotify; an amber "Reload tab" Spotify tab reloads on a hold
-- [ ] Panel drag and drop: swap, onto a Free row, from Unassigned, "Add to the end" without a controller, dropping outside cancels and the panel stays open
-- [ ] Right-click a panel row: Move to channel (one "Free" entry without a controller), Bring to the front, Unassign, Always mute; also with VoiceOver
+- [x] Panel drag and drop: swap, onto a Free row, from Unassigned, dropping outside cancels and the panel stays open
+- [ ] "Add to the end" in the panel without a controller
+- [x] Mute buttons (header, strips) solid red while on and the same size in both states, matching the other buttons
+- [x] Right-click a panel row: Move to channel, Bring to the front, Unassign, Always mute
+- [ ] Without a controller, Move to channel offers one "Free" entry; the menu with VoiceOver
 - [ ] VoiceOver reads the panel sliders ("Spotify, channel 2, volume 45%"); Reduce Motion: strips and rows close up in place
 - [ ] Benchmark: no change with the windows closed
 

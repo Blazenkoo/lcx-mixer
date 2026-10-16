@@ -181,25 +181,6 @@ struct MuteToggles: View {
     }
 }
 
-private struct MuteButtonStyle: ButtonStyle {
-    let isOn: Bool
-    @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.uiScale) private var scale
-
-    func makeBody(configuration: Configuration) -> some View {
-        let fill: Color = isOn
-            ? Color.red.opacity(configuration.isPressed ? 0.65 : 0.85)
-            : Color.primary.opacity(configuration.isPressed ? 0.2 : 0.1)
-        configuration.label
-            .padding(.horizontal, 7 * scale)
-            .padding(.vertical, 2 * scale)
-            .foregroundStyle(isOn ? Color.white : Color.primary)
-            .background(RoundedRectangle(cornerRadius: 5 * scale).fill(fill))
-            .opacity(isEnabled ? 1 : 0.4)
-            .contentShape(RoundedRectangle(cornerRadius: 5 * scale))
-    }
-}
-
 /// A button that turns solid red while its mute is on; VoiceOver reads it as a toggle.
 private struct MuteButton: View {
     let title: String
@@ -210,14 +191,20 @@ private struct MuteButton: View {
     let help: String
     let accessibilityName: String
     let action: () -> Void
+    @Environment(\.uiScale) private var scale
 
     var body: some View {
-        // Drawn by hand: macOS greys out a prominent button whenever its window isn't active, and
-        // the mute state has to read at a glance even then.
-        Button(action: action) { Label(title, systemImage: isOn ? mutedSymbol : symbol) }
-            .buttonStyle(MuteButtonStyle(isOn: isOn))
-            .labelStyle(.titleAndIcon)
-        .scaledFont(AppText.status)
+        Button(action: action) {
+            HStack(spacing: 5 * scale) {
+                // A fixed-width icon, so swapping to the muted symbol never changes the button's size.
+                Image(systemName: isOn ? mutedSymbol : symbol)
+                    .frame(width: 16 * scale)
+                Text(title)
+            }
+            .scaledFont(AppText.status, weight: .medium)
+            .frame(height: 22 * scale)
+        }
+        .buttonStyle(AppButtonStyle(isOn: isOn))
         .disabled(!enabled)
         .help(help)
         .accessibilityLabel(accessibilityName)
@@ -227,11 +214,44 @@ private struct MuteButton: View {
     }
 }
 
-/// The small bordered symbol button used on the strips (Play, Mute, Unassign) and for Settings.
+/// The app's small bordered buttons (channel strips, the window header, Settings), drawn by hand
+/// so they all share one size and a mute that's on can turn solid red without changing it. macOS's
+/// own prominent style greys out whenever the window isn't active, and the mute state has to read
+/// at a glance even then.
+struct AppButtonStyle: ButtonStyle {
+    var isOn = false
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.uiScale) private var scale
+    @Environment(\.colorScheme) private var colorScheme
+
+    func makeBody(configuration: Configuration) -> some View {
+        let dark = colorScheme == .dark
+        let shape = RoundedRectangle(cornerRadius: 6 * scale, style: .continuous)
+        let fill: Color = isOn
+            ? Color.red.opacity(configuration.isPressed ? 0.7 : 0.85)
+            : dark ? Color.white.opacity(configuration.isPressed ? 0.24 : 0.15)
+                   : Color.white.opacity(configuration.isPressed ? 0.7 : 1)
+        configuration.label
+            .foregroundStyle(isOn ? AnyShapeStyle(Color.white) : AnyShapeStyle(.primary))
+            // The same padding as macOS's small bordered buttons (it doesn't grow with text size),
+            // so these stay exactly the size the 2.3 buttons were.
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1.5)
+            .background(shape.fill(fill))
+            .overlay(shape.strokeBorder(Color.black.opacity(dark || isOn ? 0 : 0.12), lineWidth: 0.5))
+            .shadow(color: .black.opacity(dark || isOn ? 0 : 0.08), radius: 0.5, y: 0.5)
+            .opacity(isEnabled ? 1 : 0.4)
+            .contentShape(shape)
+    }
+}
+
+/// The small symbol button used on the strips (Play, Mute, Unassign) and for Settings. `isOn`
+/// makes it a toggle that turns solid red, for Mute.
 struct SmallIconButton: View {
     let symbol: String
     let help: String
     var tint: Color = .primary
+    var isOn: Bool? = nil
     let action: () -> Void
     @Environment(\.uiScale) private var scale
 
@@ -240,10 +260,23 @@ struct SmallIconButton: View {
             Image(systemName: symbol)
                 .scaledFont(11, weight: .semibold)
                 .frame(width: 24 * scale, height: 22 * scale)
-                .foregroundStyle(tint)
+                .foregroundStyle(isOn == true ? Color.white : tint)
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
+        .buttonStyle(AppButtonStyle(isOn: isOn == true))
         .help(help)
+        .accessibilityLabel(help)
+        .modifier(ToggleTraits(isOn: isOn))
+    }
+}
+
+private struct ToggleTraits: ViewModifier {
+    let isOn: Bool?
+
+    func body(content: Content) -> some View {
+        if let isOn {
+            content.accessibilityAddTraits(.isToggle).accessibilityValue(isOn ? "On" : "Off")
+        } else {
+            content
+        }
     }
 }
