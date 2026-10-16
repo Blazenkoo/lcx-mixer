@@ -468,14 +468,14 @@ Nothing fails silently: every problem shows in the window header, the menu-bar p
 - [x] Right-click a panel row: Move to channel, Bring to the front, Unassign, Always mute
 - [ ] Without a controller, Move to channel offers one "Free" entry; the menu with VoiceOver
 - [ ] VoiceOver reads the panel sliders ("Spotify, channel 2, volume 45%"); Reduce Motion: strips and rows close up in place
-- [x] Benchmark: CPU unchanged with the window open (13.6%) and closed (0.5%); memory with the windows closed 67 MB against 2.3's 41 MB, to look into
+- [x] Benchmark: CPU unchanged with the window open (13.6%) and closed (0.2–0.5%); memory 26 MB after a restart, 51 MB once the window has been open, flat after 10 opens (no leak)
 - [x] The header in one row that lines up: status, Output picker and Media, Input picker and Microphone, Settings; pickers as wide as their names
 - [x] Switching output and input from the pickers, and from Control Centre (the pickers follow); the header at every text size
 - [x] Panel: "Mute:" label and the separator above the channels
 - [x] Settings → General: Output and Input on top; the Settings button with its label
 - [x] With a controller: switching to the MacBook speakers turns channel 1 into Master (sources move down one); back to the Scarlett, or the setting off, moves them back up
 - [x] The rename: Media Mixer in the menus, the Dock, About, the menu-bar tooltip, the browser's extensions page; LCX Mixer.app moved to the Trash by the build; the audio permission and the extension still work
-- [ ] Launch at login after the rename
+- [x] Launch at login after the rename
 
 ## Testing, logging and auditing
 
@@ -520,7 +520,7 @@ Measured on an Apple silicon MacBook with Spotify, YouTube and Twitch playing an
 | Mixer window visible | ~56% · 266 MB | ~13% · 200 MB | ~13% · 194 MB | ~25% · 208 MB |
 | Mixer and About visible | ~56% | ~30% · 220 MB | ~30% | not measured |
 
-**v2.3 and v2.4**, measured alike (Spotify and Twitch playing, YouTube paused, League on a channel at 100%, 150 s each): with the mixer window visible, 13.6% · 208 MB (2.3) and 13.6% · 229 MB (2.4); with the windows closed, about 0.4% · 41 MB (2.3) and 0.5% · 67 MB (2.4, measured right after closing the window, which keeps some memory). CPU is unchanged; the memory difference with the windows closed is still to be looked into.
+**v2.3 and v2.4**, measured alike (Spotify and Twitch playing, YouTube paused, League on a channel at 100%, 150 s each): with the mixer window visible, 13.6% · 208 MB (2.3) and 13.6% · 229 MB (2.4); with the windows closed, about 0.4% · 41 MB (2.3) and 0.5% · 67 MB (2.4, measured right after closing the window, which keeps some memory). CPU is unchanged. After a restart with the window never opened, 2.4.1 uses 0.2% · 26 MB. The first time the window opens it keeps about 25 MB after closing (51 MB), and that stays flat: 51 MB after 5 and after 10 opens, so nothing leaks. The 67 MB above came at the end of a long session.
 
 For v2.2, all four sources were playing and League was turned down to 32%, so every meter on screen was moving. With the window open, it redraws 30 times a second; a profile shows that time going into SwiftUI and macOS drawing the window, with almost none in Media Mixer's own code, the new listening taps included. The earlier columns weren't necessarily measured with every source active, so the two rows above aren't a like-for-like comparison.
 
