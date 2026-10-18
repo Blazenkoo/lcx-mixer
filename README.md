@@ -9,6 +9,8 @@
 
 Media Mixer turns a Novation Launch Control XL mk2 into an 8-channel mixer for whatever is making sound: individual browser tabs (Spotify, YouTube, Twitch…) and native apps (games, Discord, Music…). Each new source lands on the next free fader automatically. No controller? It works on screen too. (Before 2.4 it was called LCX Mixer.)
 
+> **This repository is archived at version 2.4.1.** Everything here stays available under the MIT licence. Development continues privately, and later versions are not open source.
+
 ## Why it exists
 
 macOS has no per-app volume mixer, and browsers play every tab through one shared audio stream. In practice that means balancing a game, a voice chat and music by hunting through tabs and in-app sliders, often mid-game.
